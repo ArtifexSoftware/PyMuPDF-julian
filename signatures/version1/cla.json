@@ -1,3 +1,12 @@
 {
-   "signedContributors": []
+  "signedContributors": [
+    {
+      "name": "julian-smith-artifex-com",
+      "id": 83358719,
+      "comment_id": 1317446314,
+      "created_at": "2022-11-16T18:11:45Z",
+      "repoId": 545005017,
+      "pullRequestNo": 3
+    }
+  ]
 }
