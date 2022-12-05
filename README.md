@@ -1,5 +1,7 @@
 # PyMuPDF 1.21.0
 
+Trivial test change 3.
+
 ![logo](https://artifex.com/images/logos/py-mupdf-github-icon.png)
 
 Release date: November  8, 2022
