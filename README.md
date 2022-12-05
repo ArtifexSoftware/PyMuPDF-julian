@@ -1,5 +1,7 @@
 # PyMuPDF 1.21.0
 
+Second trivial change.
+
 Trivial change on master.
 
 ![logo](https://artifex.com/images/logos/py-mupdf-github-icon.png)
