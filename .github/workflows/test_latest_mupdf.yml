@@ -8,15 +8,15 @@ on:
 jobs:
 
   test_latest_mupdf:
-    # Simple build+test on single platform using latest MuPDF from git. This is
-    # a cut-down version of `build_wheels` except that we use latest MuPDF from
-    # git and use a single platform and python version.
+    # Simple build+test using latest MuPDF from git. This is a cut-down version
+    # of `build_wheels` except that we use latest MuPDF from git and use a
+    # single python version.
     #
     name: Test latest mupdf
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-20.04, windows-2019, macos-10.15]
 
     steps:
 
