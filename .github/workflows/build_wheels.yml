@@ -18,6 +18,7 @@ jobs:
     if: ${{ inputs.sdist }}
     name: Build sdist
     runs-on: ubuntu-latest
+    
     steps:
     - uses: actions/checkout@v2
       #with:
@@ -38,8 +39,12 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-2019, macos-latest]
+        #os: [ubuntu-latest, windows-2019, macos-latest]
+        os: [macos-latest]
 
+      # Avoid cancelling of all cibuildwheel runs after a single failure.
+      fail-fast: false
+    
     steps:
 
       - uses: actions/checkout@v2
@@ -69,6 +74,8 @@ jobs:
             #
             CIBW_SKIP: "pp* *i686 *-musllinux_* cp36*"
             
+            CIBW_REPAIR_WHEEL_COMMAND_MACOS: ""
+            
             # On Linux and MacOS, tell cibuildwheel to build archs depending on
             # inputs.wheels_linux_aarch64 and inputs.wheels_macos_arm64.
             #
@@ -82,9 +89,12 @@ jobs:
             CIBW_ARCHS_LINUX: ${{ fromJSON('{"false":"auto", "true":"auto aarch64"}')[inputs.wheels_linux_aarch64] }}
             CIBW_ARCHS_MACOS: ${{ fromJSON('{"false":"auto", "true":"auto arm64"}')[inputs.wheels_macos_arm64] }}
 
+            # For testing, use MuPDF master.
+            CIBW_ENVIRONMENT: PYMUPDF_SETUP_MUPDF_TGZ="" PYMUPDF_SETUP_MUPDF_BUILD="git:--recursive --depth 1 --shallow-submodules --branch master https://github.com/ArtifexSoftware/mupdf.git"
+            
             # For testing, build for single python version.
             #
-            #CIBW_BUILD: "cp311*"
+            CIBW_BUILD: "cp311*"
 
             # Get cibuildwheel to run pytest with each wheel.
             #
