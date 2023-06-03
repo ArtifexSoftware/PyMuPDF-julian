@@ -477,8 +477,44 @@ class Package:
         #
         if self.tag_platform:
             tag_platform = self.tag_platform
+        elif 0 and platform.system() == 'Darwin':
+            # setuptools.distutils seems to get things wrong, e.g.
+            #
+            #   ERROR: grumbo-1.2.3-cp311-none-macosx_13_x86_64.whl is not a
+            #   supported wheel on this platform
+            #
+            # when `grumbo-1.2.3-cp311-none-macosx_13_0_x86_64.whl` appears to
+            # work ok.
+            #
+            # so we do it ourselves. Except... it seems that version `13_3`
+            # is not accepted by pip, which only lists `13_0` in pip debug
+            # --verbose. Similarly for `12_0`, `11_0`. But `10_16` is ok.
+            #
+            v, _, cpu = platform.mac_ver()
+            v = v.split('.')[:2]    # Just first two numbers.
+            v[1] = '0'
+            v = '_'.join(v)
+            tag_platform = f'macosx_{v}_{cpu}'
+            _log( f'MacOS tag_platform is: {tag_platform!r}')
         else:
             tag_platform = setuptools.distutils.util.get_platform().replace('-', '_').replace('.', '_')
+            if 0:
+                _log( f'From setuptools.distutils.util.get_platform(), tag_platform={tag_platform!r}.')
+                m = re.match( '^(macosx_[0-9]+_[0-9]+)_[0-9]+(_.+)$', tag_platform)
+                if m:
+                    tag_platform2 = f'{m.group(1)}{m.group(2)}'
+                    _log( f'Changing from {tag_platform!r} to {tag_platform2!r}')
+                    tag_platform = tag_platform2
+                _log( f'From setuptools.distutils.util.get_platform(), tag_platform={tag_platform!r}.')
+            if 1:
+                # E.g. `PyMuPDF-1.22.3-cp311-none-macosx_13_x86_64.whl`
+                # causes `pip` to fail with: `not a supported wheel on this
+                # platform`. So we add `_0` to the OS version.
+                m = re.match( '^(macosx_[0-9]+)(_[^0-9].+)$', tag_platform)
+                if m:
+                    tag_platform2 = f'{m.group(1)}_0{m.group(2)}'
+                    _log( f'Changing from {tag_platform!r} to {tag_platform2!r}')
+                    tag_platform = tag_platform2
 
         # Final tag is, for example, 'cp39-none-win32', 'cp39-none-win_amd64'
         # or 'cp38-none-openbsd_6_8_amd64'.
@@ -537,7 +573,13 @@ class Package:
             #
             z.writestr(f'{dist_info_dir}/RECORD', record.get())
 
-        _log( f'Have created wheel: {path}')
+        st = os.stat(path)
+        _log( f'Have created wheel size={st.st_size}: {path}')
+        with zipfile.ZipFile(path, compression=self.wheel_compression) as z:
+            _log(f'Contents are:')
+            for zi in z.infolist():
+                _log(f'    {zi.file_size: 10d} {zi.filename}')
+        
         return os.path.basename(path)
 
 
@@ -682,6 +724,7 @@ class Package:
         def add_str(content, to_abs, to_rel):
             if verbose:
                 _log( f'Writing to: {to_abs}')
+            os.makedirs( os.path.dirname( to_abs), exist_ok=True)
             with open( to_abs, 'w') as f:
                 f.write( content)
             record.add_content(content, to_rel)
@@ -1254,40 +1297,71 @@ def build_extension(
     
         # Not Windows.
         #
-        path_so_leaf = f'_{name}.so'
-        path_so = f'{outdir}/{path_so_leaf}'
-        cpp_flags = ''
+        command, pythonflags = base_compiler(cpp=cpp)
+        
+        general_flags = ''
         if debug:
-            cpp_flags += ' -g'
+            general_flags += ' -g'
         if optimise:
-            cpp_flags += ' -O2 -DNDEBUG'
-        cpp_flags = cpp_flags.strip()
-        # Fun fact - on Linux, if the -L and -l options are before '{path_cpp}
-        # -o {path_so}' they seem to be ignored...
+            general_flags += ' -O2 -DNDEBUG'
+        
+        if darwin():
+            # It looks likme using `.dylib` breaks things.
+            path_so_leaf = f'_{name}.so'
+            
+            # MacOS's linker does not like `-z origin`.
+            rpath_flag = "-Wl,-rpath,@loader_path/"
+            
+            # Avoid `Undefined symbols for ... "_PyArg_UnpackTuple" ...'.
+            general_flags += ' -undefined dynamic_lookup'
+        else:
+            path_so_leaf = f'_{name}.so'
+            rpath_flag = "-Wl,-rpath,'$ORIGIN',-z,origin"
+        path_so = f'{outdir}/{path_so_leaf}'
+        # Fun fact - on Linux, if the -L and -l options are before '{path_cpp}'
+        # they seem to be ignored...
         #
         # We use compiler to compile and link in one command.
         #
-        command, flags = base_compiler(cpp=cpp)
         command = f'''
                 {command}
                     -fPIC
                     -shared
-                    {flags.includes}
+                    {general_flags.strip()}
+                    {pythonflags.includes}
                     {includes_text}
                     {defines_text}
-                    {cpp_flags}
                     {path_cpp}
                     -o {path_so}
                     {compiler_extra}
                     {libpaths_text}
                     {libs_text}
-                    -Wl,-rpath='$ORIGIN',-z,origin
+                    {rpath_flag}
                     {linker_extra}
+                    {pythonflags.ldflags}
                 '''
         if _doit( force, lambda: _fs_mtime( path_cpp, 0) >= _fs_mtime( path_so, 0)):
             run(command)
         else:
             _log(f'Not compiling+linking because {path_cpp!r} older than {path_so!r}.')
+    
+        if darwin():
+            # We need to patch up references to shared libraries in `libs`.
+            sublibraries = list()
+            for lib in libs:
+                for libpath in libpaths:
+                    found = list()
+                    for suffix in '.so', '.dylib':
+                        path = f'{libpath}/lib{os.path.basename(lib)}{suffix}'
+                        if os.path.exists( path):
+                            found.append( path)
+                    if found:
+                        assert len(found) == 1, f'More than one file matches lib={lib!r}: {found}'
+                        sublibraries.append( found[0])
+                        break
+                else:
+                    _log(f'Warning: can not find path of lib={lib!r} in libpaths={libpaths}')
+            macos_patch( path_so, *sublibraries)
     
     return path_so_leaf
 
@@ -1399,7 +1473,7 @@ def git_items( directory, submodules=False):
     return ret
 
 
-def run( command, verbose=1):
+def run( command, verbose=1, capture=False):
     '''
     Runs a command using `subprocess.run()`.
     
@@ -1417,6 +1491,8 @@ def run( command, verbose=1):
         verbose:
             If true, outputs diagnostic describing the command before running
             it.
+        capture:
+            If true, we return output from command.
     Returns:
         None on success, otherwise raises an exception.
     '''
@@ -1425,9 +1501,21 @@ def run( command, verbose=1):
         nl = '\n'
         _log( f'Running: {nl.join(lines)}')
     sep = ' ' if windows() else '\\\n'
-    command2 = sep.join( lines) 
-    subprocess.run( command2, shell=True, check=True)
+    command2 = sep.join( lines)
+    if capture:
+        return subprocess.run(
+                command2,
+                shell=True,
+                capture_output=True,
+                check=True,
+                encoding='utf8',
+                ).stdout
+    else:
+        subprocess.run( command2, shell=True, check=True)
 
+
+def darwin():
+    return sys.platform.startswith( 'darwin')
 
 def windows():
     return platform.system() == 'Windows'
@@ -1454,21 +1542,57 @@ class PythonFlags:
             # because it copes with multiple installed python's, e.g.
             # manylinux_2014's /opt/python/cp*-cp*/bin/python*.
             #
-            # But... it seems that we should not attempt to specify libpython
-            # on the link command. The manylinkux docker containers don't
-            # actually contain libpython.so, and it seems that this
+            # But... on non-macos it seems that we should not attempt to specify
+            # libpython on the link command. The manylinux docker containers
+            # don't actually contain libpython.so, and it seems that this
             # deliberate. And the link command runs ok.
             #
             python_exe = os.path.realpath( sys.executable)
-            python_config = f'{python_exe}-config'
-            self.includes = subprocess.run(
-                    f'{python_config} --includes',
-                    shell=True,
-                    capture_output=True,
-                    check=True,
-                    encoding='utf8',
-                    ).stdout.strip()
-            self.libs = ''
+            if darwin():
+                python_config = f'python3-config'
+            else:
+                python_config = f'{python_exe}-config'
+            self.includes = run( f'{python_config} --includes', capture=1).strip()
+            #if darwin():
+            #    self.libs = 
+            self.ldflags = run( f'{python_config} --ldflags', capture=1).strip()
+            _log(f'self.includes={self.includes!r}')
+            _log(f'self.ldflags={self.ldflags!r}')
+
+
+def macos_patch( library, *sublibraries):
+    '''
+    Patches `library` so that all references to items in `sublibraries` are
+    changed to `@rpath/<leafname>`.
+    
+    library:
+        Path of shared library.
+    sublibraries:
+        List of paths of shared libraries; these have typically been
+        specified with `-l` when `library` was created.
+    '''
+    _log( f'macos_patch(): library={library}  sublibraries={sublibraries}')
+    if not darwin():
+        return
+    subprocess.run( f'otool -L {library}', shell=1, check=1)
+    command = 'install_name_tool'
+    names = []
+    for sublibrary in sublibraries:
+        name = subprocess.run(
+                f'otool -D {sublibrary}',
+                shell=1,
+                check=1,
+                capture_output=1,
+                encoding='utf8',
+                ).stdout.strip()
+        name = name.split('\n')
+        assert len(name) == 2 and name[0] == f'{sublibrary}:', f'{name=}'
+        name = name[1]
+        command += f' -change {name} @rpath/{os.path.basename(name)}'
+    command += f' {library}'
+    _log( f'Running: {command}')
+    subprocess.run( command, shell=1, check=1)
+    subprocess.run( f'otool -L {library}', shell=1, check=1)
 
 
 # Internal helpers.
