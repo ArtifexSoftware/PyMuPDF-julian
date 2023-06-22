@@ -13794,7 +13794,7 @@ def JM_annot_set_border( border, doc, annot_obj):
     if isinstance( ndashes, tuple) and len( ndashes) > 0:
         dashlen = len( ndashes)
         darr = mupdf.pdf_new_array( doc, dashlen)
-        for d in dashlen:
+        for d in ndashes:
             mupdf.pdf_array_push_int( darr, d)
         mupdf.pdf_dict_putl( annot_obj, darr, PDF_NAME('BS'), PDF_NAME('D'))
 
@@ -16555,7 +16555,7 @@ def JM_set_choice_options(annot, liste):
     for i in range(n):
         val = liste[i]
         opt = val
-        if opt:
+        if isinstance(opt, str):
             mupdf.pdf_array_push_text_string( optarr, opt)
         else:
             assert isinstance( val, (tuple, list)) and len( val) == 2, 'bad choice field list'
@@ -16667,7 +16667,7 @@ def JM_set_ocg_arrays(conf, basestate, on, off, rbgroups, locked):
         if off:
             arr = mupdf.pdf_dict_put_array( conf, PDF_NAME('OFF'), 1)
             JM_set_ocg_arrays_imp( arr, off)
-    if locked is not Py_None:
+    if locked is not None:
         mupdf.pdf_dict_del( conf, PDF_NAME('Locked'))
         if locked:
             arr = mupdf.pdf_dict_put_array( conf, PDF_NAME('Locked'), 1)
@@ -17487,7 +17487,7 @@ def jm_append_merge(dev):
     
     if callable(dev.method) or dev.method:  # function or method
         # callback.
-        if dev.method == Py_None:
+        if dev.method == None:
             # fixme, this surely cannot happen?
             assert 0
             resp = PyObject_CallFunctionObjArgs(out, dev.pathdict, NULL)
