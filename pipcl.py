@@ -1154,6 +1154,9 @@ def build_extension(
         linker_extra='',
         swig='swig',
         cpp=True,
+        prerequisites_swig=None,
+        prerequisites_compile=None,
+        prerequisites_link=None,
         ):
     '''
     Builds a C++ Python extension module using SWIG. Works on Unix and Windows.
@@ -1199,6 +1202,17 @@ def build_extension(
             Extra linker flags.
         swig:
             Base swig command.
+        prerequisites_swig:
+        prerequisites_compile:
+        prerequisites_link:
+            List of extra input files/directories that should force running of
+            swig, compile or link commands if they are newer than any existing
+            generated SWIG .i file, compiled object file or shared library
+            file.
+
+            In these lists, True forces re-run, False forces no re-run, None
+            is ignored. If an item is a directory path we look for newest file
+            within the tree.
     
     Returns the leafname of the generated library file within `outdir`, e.g.
     `_{name}.so` on Unix or `_{name}.cp311-win_amd64.pyd` on Windows.
@@ -1212,7 +1226,7 @@ def build_extension(
         os.mkdir( outdir)
     # Run SWIG.
     #run( f'{swig} -version')
-    if _doit(force, _fs_mtime(path_i) >= _fs_mtime(path_cpp)):
+    if _doit( path_cpp, path_i, prerequisites_swig):
         run( f'''
                 {swig}
                     -Wall
@@ -1226,7 +1240,7 @@ def build_extension(
                 '''
                 )
     else:
-        _log(f'Not running swig because {path_cpp} newer than {path_i}')
+        _log(f'Not running swig because up to date: {path_i}')
     
     if windows():
         python_version = ''.join(platform.python_version_tuple()[:2])
@@ -1269,10 +1283,10 @@ def build_extension(
                     {defines_text}
                     {compiler_extra}
                 '''
-        if _doit( force, _fs_mtime(path_cpp) >= _fs_mtime(path_obj)):
+        if _doit( path_obj, path_cpp, prerequisites_compile):
             run(command)
         else:
-            _log(f'Not compiling because {path_cpp!r} older than {path_obj!r}.')
+            _log(f'Not compiling because up to date: {path_obj}')
 
         command, flags = base_linker(cpp=cpp)
         command = f'''
@@ -1288,10 +1302,10 @@ def build_extension(
                     {path_obj}
                     {linker_extra}
                 '''
-        if _doit( force, _fs_mtime(path_obj) >= _fs_mtime(path_so)):
+        if _doit( path_so, path_obj, prerequisites_link):
             run(command)
         else:
-            _log(f'Not linking because {path_obj!r} older than {path_so!r}.')
+            _log(f'Not linking because up to date: {path_so}')
     
     else:
     
@@ -1340,10 +1354,10 @@ def build_extension(
                     {linker_extra}
                     {pythonflags.ldflags}
                 '''
-        if _doit( force, lambda: _fs_mtime( path_cpp, 0) >= _fs_mtime( path_so, 0)):
+        if _doit( path_so, path_cpp, prerequisites_compile, prerequisites_link):
             run(command)
         else:
-            _log(f'Not compiling+linking because {path_cpp!r} older than {path_so!r}.')
+            _log(f'Not compiling+linking because up to date: {path_so}')
     
         if darwin():
             # We need to patch up references to shared libraries in `libs`.
@@ -1629,19 +1643,65 @@ def _cpu_name():
 
 
 
-def _doit( force, default):
+def _doit( out, in_, prerequisites1, prerequisites2=None):
     '''
     Returns true/false for whether to run a command.
-    '''
-    if force in (None, ''):
-        return default() if callable(default) else default
-    elif force in (True, 1, '1'):
-        return True
-    elif force in (False, 0, '0'):
-        return False
-    else:
-        assert 0, f'Unrecognised {force=}'
     
+    out:
+        Output path.
+    prerequisites:
+        List of input paths. If an item is None it is ignored, otherwise if an
+        item is not a string we immediately return it cast to a bool.
+    '''
+    _log( f'out={out!r}')
+    _log( f'in={in_!r}')
+    def _make_prerequisites(p):
+        if isinstance( p, (list, tuple)):
+            return list(p)
+        else:
+            return [p]
+    prerequisites = list()
+    prerequisites.append( in_)
+    prerequisites += _make_prerequisites( prerequisites1)
+    prerequisites += _make_prerequisites( prerequisites2)
+    _log( 'prerequisites:')
+    for i in  prerequisites:
+        _log( f'    {i!r}')
+    pre_mtime = 0
+    pre_path = None
+    for prerequisite in prerequisites:
+        if isinstance( prerequisite, str):
+            mtime = _fs_mtime_newest( prerequisite)
+            if mtime >= pre_mtime:
+                pre_mtime = mtime
+                pre_path = prerequisite
+        elif prerequisite is None:
+            pass
+        else:
+            _log( f'Returning prerequisite={prerequisite!r}')
+            return bool(prerequisite)
+    out_mtime =  _fs_mtime( out)
+    ret = pre_mtime >= out_mtime
+    _log( f'out_mtime={time.ctime(out_mtime)} pre_mtime={time.ctime(pre_mtime)}. pre_path={pre_path!r}: returning {ret!r}.')
+    return ret
+
+
+def _fs_mtime_newest( path):
+    '''
+    path:
+        If a file, returns mtime of the file. If a directory, returns mtime of
+        newest file anywhere within directory tree. Otherwise returns 0.
+    '''
+    ret = 0
+    if os.path.isdir( path):
+        for dirpath, dirnames, filenames in os.walk( path):
+            for filename in filenames:
+                path = os.path.join( dirpath, filename)
+                ret = max( ret, _fs_mtime( path))
+    else:
+        ret = _fs_mtime( path)
+    return ret
+
 
 def _flags( items, prefix='', quote=''):
     '''
