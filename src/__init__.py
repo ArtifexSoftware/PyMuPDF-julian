@@ -17891,6 +17891,7 @@ def jm_lineart_drop_device(dev, ctx):
  
 def jm_lineart_fill_path( dev, ctx, path, even_odd, ctm, colorspace, color, alpha, color_params):
     #log(f'{getattr(dev, "pathdict", None)=}')
+    #log(f'jm_lineart_fill_path(): {dev.seqno=}')
     even_odd = True if even_odd else False
     try:
         assert isinstance( ctm, mupdf.fz_matrix)
