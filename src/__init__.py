@@ -13533,7 +13533,9 @@ def JM_EscapeStrFromStr(c):
     #
     # Would be good to have a more efficient way to do this.
     #
-    assert isinstance(c, str)
+    if c is None:
+        return ''
+    assert isinstance(c, str), f'type(c)={type(c)!r}'
     b = c.encode('utf8', 'surrogateescape')
     ret = ''
     for bb in b:
@@ -17491,6 +17493,7 @@ def jm_append_merge(dev):
     '''
     #log(f'{getattr(dev, "pathdict", None)=}')
     assert isinstance(dev.out, list)
+    #log( f'{dev.out=}')
     
     if callable(dev.method) or dev.method:  # function or method
         # callback.
@@ -17508,7 +17511,7 @@ def jm_append_merge(dev):
     
     def append():
         #log(f'jm_append_merge(): clearing dev.pathdict')
-        dev.out.append(dev.pathdict)
+        dev.out.append(dev.pathdict.copy())
         dev.pathdict.clear()
     assert isinstance(dev.out, list)
     len_ = len(dev.out) # len of output list so far
@@ -17521,8 +17524,9 @@ def jm_append_merge(dev):
     if thistype != 's': # if not stroke, then append
         return append()
     prev = dev.out[ len_-1] # get prev path
-    #log( '{prev=}')
+    #log( f'{prev=}')
     prevtype = prev[ dictkey_type]
+    #log( f'{prevtype=}')
     if prevtype != 'f': # if previous not fill, append
         return append()
     # last check: there must be the same list of items for "f" and "s".
@@ -18357,7 +18361,7 @@ class JM_new_lineart_device_Device(mupdf.FzDevice2):
     '''
     LINEART device for Python method Page.get_cdrawings()
     '''
-
+    #print(f'JM_new_lineart_device_Device()')
     def __init__(self, out, clips, method):
         #log(f'JM_new_lineart_device_Device.__init__()')
         super().__init__()
