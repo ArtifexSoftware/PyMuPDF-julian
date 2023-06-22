@@ -30,7 +30,7 @@ Environmental variables:
     PYMUPDF_SETUP_DEVENV
         Location of devenv.com on Windows. If unset we search for it - see
         wdev.py. if that fails we use just 'devenv.com'.
-    
+
     PYMUPDF_SETUP_MUPDF_BUILD
         If set, overrides location of mupdf when building PyMuPDF:
             Empty string:
@@ -91,6 +91,10 @@ Environmental variables:
         If 0 we do not rebuild mupdfpy. If 1 we always rebuild mupdfpy. If
         unset we rebuild if necessary.
 
+    PYMUPDF_SETUP_REBUILD_GIT_DETAILS
+        If '0' we do not rebuild if only fitz/helper-git-versions.i has
+        changed.
+    
     WDEV_VS_YEAR
         If set, we use as Visual Studio year, for example '2019' or '2022'.
 
@@ -109,6 +113,8 @@ Known build failures:
         CIBW_SKIP='*musllinux* pp*'
 '''
 
+import glob
+import io
 import os
 import textwrap
 import time
@@ -749,6 +755,18 @@ def build_mupdf_unix( mupdf_local, env, build_type):
     return unix_build_dir
 
 
+def _fs_update(text, path):
+    try:
+        with open( path) as f:
+            text0 = f.read()
+    except OSError:
+        text0 = None
+    print(f'path={path!r} text==text0={text==text0!r}')
+    if text != text0:
+        with open( path, 'w') as f:
+            f.write( text)
+    
+
 def _build_extensions( mupdf_local, mupdf_build_dir, build_type):
     '''
     Builds Python extension module `extra` and `_fitz`.
@@ -796,26 +814,28 @@ def _build_extensions( mupdf_local, mupdf_build_dir, build_type):
                     )
         else:
             includes = None
-        with open(f'fitz/helper-git-versions.i', 'w') as f:
-            f.write('%pythoncode %{\n')
-            def repr_escape(text):
-                text = repr(text)
-                text = text.replace('{', '{{')
-                text = text.replace('}', '}}')
-                text = text.replace('%', '{chr(37)})')  # Avoid confusing swig.
-                return 'f' + text
-            def write_git(name, directory):
-                sha, comment, diff, branch = get_git_id(directory)
-                f.write(f'{name}_git_sha = \'{sha}\'\n')
-                f.write(f'{name}_git_comment = {repr_escape(comment)}\n')
-                f.write(f'{name}_git_diff = {repr_escape(diff)}\n')
-                f.write(f'{name}_git_branch = {repr_escape(branch)}\n')
-                f.write('\n')
-
-            write_git('pymupdf', '.')
-            if mupdf_local:
-                write_git('mupdf', mupdf_local)
-            f.write('%}\n')
+        
+        # Update git info file.
+        f = io.StringIO()
+        f.write('%pythoncode %{\n')
+        def repr_escape(text):
+            text = repr(text)
+            text = text.replace('{', '{{')
+            text = text.replace('}', '}}')
+            text = text.replace('%', '{chr(37)})')  # Avoid confusing swig.
+            return 'f' + text
+        def write_git(name, directory):
+            sha, comment, diff, branch = get_git_id(directory)
+            f.write(f'{name}_git_sha = \'{sha}\'\n')
+            f.write(f'{name}_git_comment = {repr_escape(comment)}\n')
+            f.write(f'{name}_git_diff = {repr_escape(diff)}\n')
+            f.write(f'{name}_git_branch = {repr_escape(branch)}\n')
+            f.write('\n')
+        write_git('pymupdf', '.')
+        if mupdf_local:
+            write_git('mupdf', mupdf_local)
+        f.write('%}\n')
+        _fs_update( f.getvalue(), 'fitz/helper-git-versions.i')
 
         libs = 'mupdfcpp64.lib' if windows else ('mupdf',)
         # Default to force=true because pipcl does not look at mtime of
@@ -828,6 +848,10 @@ def _build_extensions( mupdf_local, mupdf_build_dir, build_type):
                 ' -Wno-pointer-sign'
                 ' -Wno-sign-compare'
                 )
+        prerequisites_swig = glob.glob( f'{g_root}/fitz/*.i')
+        if os.environ.get( 'PYMUPDF_SETUP_REBUILD_GIT_DETAILS') == '0':
+            prerequisites_swig.remove( f'{g_root}/fitz/helper-git-versions.i')
+        
         path_so_leaf_a = pipcl.build_extension(
                 name = 'fitz',
                 path_i = f'{g_root}/fitz/fitz.i',
@@ -842,6 +866,7 @@ def _build_extensions( mupdf_local, mupdf_build_dir, build_type):
                 optimise = optimise,
                 debug = debug,
                 cpp = False,
+                prerequisites_swig = prerequisites_swig,
                 )
 
     if mupdf_local:
