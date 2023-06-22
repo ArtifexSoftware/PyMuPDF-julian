@@ -1664,9 +1664,10 @@ def _doit( out, in_, prerequisites1, prerequisites2=None):
     prerequisites.append( in_)
     prerequisites += _make_prerequisites( prerequisites1)
     prerequisites += _make_prerequisites( prerequisites2)
-    _log( 'prerequisites:')
-    for i in  prerequisites:
-        _log( f'    {i!r}')
+    if 0:
+        _log( 'prerequisites:')
+        for i in  prerequisites:
+            _log( f'    {i!r}')
     pre_mtime = 0
     pre_path = None
     for prerequisite in prerequisites:
@@ -1682,7 +1683,10 @@ def _doit( out, in_, prerequisites1, prerequisites2=None):
             return bool(prerequisite)
     out_mtime =  _fs_mtime( out)
     ret = pre_mtime >= out_mtime
-    _log( f'out_mtime={time.ctime(out_mtime)} pre_mtime={time.ctime(pre_mtime)}. pre_path={pre_path!r}: returning {ret!r}.')
+    if 0:
+        _log( f'out_mtime={time.ctime(out_mtime)} pre_mtime={time.ctime(pre_mtime)}.'
+                ' pre_path={pre_path!r}: returning {ret!r}.'
+                )
     return ret
 
 
