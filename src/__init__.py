@@ -829,10 +829,10 @@ class Annot:
         arr = mupdf.pdf_dict_get( annot_obj, PDF_NAME('RD'))
         if mupdf.pdf_array_len( arr) == 4:
             return (
-                    mupdf.pdf_to_real( mupdf.pdf_array_get( arr, 0))
-                    mupdf.pdf_to_real( mupdf.pdf_array_get( arr, 1))
-                    -mupdf.pdf_to_real( mupdf.pdf_array_get( arr, 2))
-                    -mupdf.pdf_to_real( mupdf.pdf_array_get( arr, 3))
+                    mupdf.pdf_to_real( mupdf.pdf_array_get( arr, 0)),
+                    mupdf.pdf_to_real( mupdf.pdf_array_get( arr, 1)),
+                    -mupdf.pdf_to_real( mupdf.pdf_array_get( arr, 2)),
+                    -mupdf.pdf_to_real( mupdf.pdf_array_get( arr, 3)),
                     )
 
     @property
@@ -5900,8 +5900,8 @@ class Font:
                 "fake-italic":  fake_italic if mupdf_cppyy else f.fake_italic,
                 "opentype":     has_opentype if mupdf_cppyy else f.has_opentype,
                 "invalid-bbox": invalid_bbox if mupdf_cppyy else f.invalid_bbox,
-                'cjk':          cjk_lang if mupdf_cppyy else f.cjk
-                'cjk-lang':     cjk_lang if mupdf_cppyy else f.cjk_lang
+                'cjk':          cjk_lang if mupdf_cppyy else f.cjk,
+                'cjk-lang':     cjk_lang if mupdf_cppyy else f.cjk_lang,
                 'embed':        embed if mupdf_cppyy else f.embed,
                 'never-embed':  never_embed if mupdf_cppyy else f.never_embed,
                 }
@@ -13794,7 +13794,7 @@ def JM_annot_set_border( border, doc, annot_obj):
     if isinstance( ndashes, tuple) and len( ndashes) > 0:
         dashlen = len( ndashes)
         darr = mupdf.pdf_new_array( doc, dashlen)
-        for d in dashlen
+        for d in dashlen:
             mupdf.pdf_array_push_int( darr, d)
         mupdf.pdf_dict_putl( annot_obj, darr, PDF_NAME('BS'), PDF_NAME('D'))
 
@@ -13816,55 +13816,6 @@ def JM_annot_set_border( border, doc, annot_obj):
         obj = mupdf.pdf_dict_get( annot_obj, PDF_NAME('BE'))
         mupdf.pdf_dict_put( obj, PDF_NAME('S'), PDF_NAME('C'))
         mupdf.pdf_dict_put_int( obj, PDF_NAME('I'), nclouds)
-
-
-old def JM_annot_set_border(border, doc, annot_obj):
-    assert isinstance(border, dict)
-
-    nwidth = border.get(dictkey_width)  # new width
-    ndashes = border.get(dictkey_dashes)# new dashes
-    nstyle  = border.get(dictkey_style) # new style
-
-    # first get old border properties
-    oborder = JM_annot_border(annot_obj)
-    owidth = oborder.get(dictkey_width)     # old width
-    odashes = oborder.get(dictkey_dashes)   # old dashes
-    ostyle = oborder.get(dictkey_style)     # old style
-
-    # then delete any relevant entries
-    annot_obj.pdf_dict_del(mupdf.PDF_ENUM_NAME_BS)
-    annot_obj.pdf_dict_del(mupdf.PDF_ENUM_NAME_BE)
-    annot_obj.pdf_dict_del(mupdf.PDF_ENUM_NAME_Border)
-
-    # populate new border array
-    if nwidth < 0:
-        nwidth = owidth # no new width: take current
-    if nwidth < 0:
-        nwidth = 0.0    # default if no width given
-    if ndashes is None:
-        ndashes = odashes   # no new dashes: take old
-    if nstyle is None:
-        nstyle  = ostyle;   # no new style: take old
-
-    if ndashes and isinstance(ndashes, (tuple, list)) and len(ndashes) > 0:
-        n = len(ndashes)
-        darr = mupdf.pdf_new_array(doc, n);
-        for i in range(n):
-            d = ndashes[i]
-            mupdf.pdf_array_push_int(darr, d)
-        mupdf.pdf_dict_putl( annot_obj, darr, mupdf.PDF_ENUM_NAME_BS, mupdf.PDF_ENUM_NAME_D)
-        nstyle = "D"
-
-    mupdf.pdf_dict_putl(
-            annot_obj,
-            mupdf.pdf_new_real(float(nwidth)),
-            mupdf.PDF_ENUM_NAME_BS,
-            mupdf.PDF_ENUM_NAME_W,
-            )
-
-    val = JM_get_border_style(nstyle)
-
-    mupdf.pdf_dict_putl(annot_obj, val, mupdf.PDF_ENUM_NAME_BS, mupdf.PDF_ENUM_NAME_S)
 
 
 def JM_append_rune(buff, ch):
@@ -15026,7 +14977,7 @@ def JM_get_widget_properties(annot, Widget):
     fvalue = None
     if field_type == PDF_WIDGET_TYPE_RADIOBUTTON:
         obj = mupdf.pdf_dict_get( annot_obj, PDF_NAME('Parent'))    # owning RB group
-        obj.m_internal:
+        if obj.m_internal:
             SETATTR_DROP(Widget, "rb_parent", mupdf.pdf_to_num( obj))
         obj = mupdf.pdf_dict_get(annot_obj, PDF_NAME('AS'))
         if obj.m_internal:
@@ -16588,7 +16539,7 @@ def JM_scan_resources(pdf, rsrc, liste, what, stream_xref, tracer):
         rsrc.pdf_unmark_obj()
 
 
-void JM_set_choice_options(annot, liste):
+def JM_set_choice_options(annot, liste):
     '''
     set ListBox / ComboBox values
     '''
@@ -16598,11 +16549,6 @@ void JM_set_choice_options(annot, liste):
     n = len( liste)
     if n == 0:
         return
-    PyObject *val = NULL, *val1 = NULL, *val2 = NULL;
-    pdf_obj *optarrsub = NULL, *optarr = NULL, *annot_obj = NULL;
-    pdf_document *pdf = NULL;
-    const char *opt = NULL, *opt1 = NULL, *opt2 = NULL;
-    
     annot_obj = mupdf.pdf_annot_obj( annot)
     pdf = mupdf.pdf_get_bound_document( annot_obj)
     optarr = mupdf.pdf_new_array( pdf, n)
