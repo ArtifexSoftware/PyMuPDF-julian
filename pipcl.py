@@ -1770,9 +1770,17 @@ class _Record:
     def add_content(self, content, to_, verbose=False):
         if isinstance(content, str):
             content = content.encode('utf8')
+        
+        # Specification for the line we write is supposed to be in
+        # https://packaging.python.org/en/latest/specifications/binary-distribution-format
+        # but it's not very clear.
+        #
         h = hashlib.sha256(content)
         digest = h.digest()
         digest = base64.urlsafe_b64encode(digest)
+        digest = digest.rstrip(b'=')
+        digest = digest.decode('utf8')
+        
         self.text += f'{to_},sha256={digest},{len(content)}\n'
         if verbose:
             _log(f'Adding {to_}')
