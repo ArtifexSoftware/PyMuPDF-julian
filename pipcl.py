@@ -1411,6 +1411,8 @@ def base_compiler(vs=None, flags=None, cpp=False):
         if not vs:
             vs = wdev.WindowsVS()
         cc = f'"{vs.vcvars}"&&"{vs.cl}"'
+    elif wasm():
+        cc = 'em++' if cpp else 'emcc'
     else:
         cc = 'c++' if cpp else 'cc'
     return cc, flags
@@ -1444,6 +1446,8 @@ def base_linker(vs=None, flags=None, cpp=False):
         if not vs:
             vs = wdev.WindowsVS()
         linker = f'"{vs.vcvars}"&&"{vs.link}"'
+    elif wasm():
+        linker = 'em++' if cpp else 'emcc'
     else:
         linker = 'c++' if cpp else 'cc'
     return linker, flags
@@ -1534,6 +1538,9 @@ def darwin():
 def windows():
     return platform.system() == 'Windows'
 
+def wasm():
+    return os.environ.get( 'OS') in ('wasm', 'wasm-mt')
+
 
 class PythonFlags:
     '''
@@ -1551,6 +1558,15 @@ class PythonFlags:
             wp = wdev.WindowsPython()
             self.includes = f'/I{wp.root}\\include'
             self.libs = f'/LIBPATH:"{wp.root}\\libs"'
+        
+        elif os.environ.get( 'PYODIDE_ROOT'):
+            _log(f'PYODIDE_ROOT is set.')
+            _include_dir = os.environ[ 'PYO3_CROSS_INCLUDE_DIR']
+            _lib_dir = os.environ[ 'PYO3_CROSS_LIB_DIR']
+            _log( 'PYODIDE_ROOT set. {_include_dir=} {_lib_dir=}')
+            self.includes = f'-I {_include_dir}'
+            self.ldflags = f'-L {_lib_dir}'
+        
         else:
             # We use python-config which appears to work better than pkg-config
             # because it copes with multiple installed python's, e.g.
@@ -1570,8 +1586,9 @@ class PythonFlags:
             #if darwin():
             #    self.libs = 
             self.ldflags = run( f'{python_config} --ldflags', capture=1).strip()
-            _log(f'self.includes={self.includes!r}')
-            _log(f'self.ldflags={self.ldflags!r}')
+        
+        _log(f'self.includes={self.includes!r}')
+        _log(f'self.ldflags={self.ldflags!r}')
 
 
 def macos_patch( library, *sublibraries):
