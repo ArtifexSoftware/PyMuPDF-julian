@@ -507,7 +507,7 @@ openbsd = sys.platform.startswith( 'openbsd')
 freebsd = sys.platform.startswith( 'freebsd')
 darwin = sys.platform.startswith( 'darwin')
 windows = platform.system() == 'Windows' or platform.system().startswith('CYGWIN')
-
+wasm = os.environ.get('OS') in ('wasm', 'wasm-mt')
 
 def _implementations():
     v = os.environ.get( 'PYMUPDF_SETUP_IMPLEMENTATIONS', 'ab')
@@ -726,7 +726,7 @@ def build_mupdf_unix( mupdf_local, env, build_type):
     #
     #build_prefix = f'PyMuPDF-{platform.machine()}-'
     build_prefix = f'PyMuPDF-'
-    if os.environ.get('OS') in ('wasm', 'wasm-mt'):
+    if wasm:
         build_prefix += 'wasm-'
     else:
         build_prefix += f'{platform.machine()}-'
@@ -950,9 +950,9 @@ with open( f'{g_root}/README.md', encoding="utf-8") as f:
     readme = f.read()
 
 p = pipcl.Package(
-        'PyMuPDF',
-        '1.22.3',
-        summary = "Python bindings for the PDF toolkit and renderer MuPDF",
+        'PyMuPDFr',
+        '1.22.5',
+        summary = "Rebased Python bindings for the PDF toolkit and renderer MuPDF",
         description = readme,
         description_content_type = "text/markdown",
         classifier = classifier,
@@ -972,7 +972,7 @@ p = pipcl.Package(
         # 30MB: 9 ZIP_DEFLATED
         # 28MB: 9 ZIP_BZIP2
         # 23MB: 9 ZIP_LZMA
-        wheel_compression = zipfile.ZIP_DEFLATED if darwin else zipfile.ZIP_LZMA,
+        wheel_compression = zipfile.ZIP_DEFLATED if (darwin or wasm) else zipfile.ZIP_LZMA,
         wheel_compresslevel = 9,
         )
 
