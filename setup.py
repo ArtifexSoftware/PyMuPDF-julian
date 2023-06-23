@@ -724,7 +724,12 @@ def build_mupdf_unix( mupdf_local, env, build_type):
     # $_PYTHON_HOST_PLATFORM allows cross-compiled cibuildwheel builds
     # to coexist, e.g. on github.
     #
-    build_prefix = f'PyMuPDF-{platform.machine()}-'
+    #build_prefix = f'PyMuPDF-{platform.machine()}-'
+    build_prefix = f'PyMuPDF-'
+    if os.environ.get('OS') in ('wasm', 'wasm-mt'):
+        build_prefix += 'wasm-'
+    else:
+        build_prefix += f'{platform.machine()}-'
     build_prefix_extra = os.environ.get( '_PYTHON_HOST_PLATFORM')
     if build_prefix_extra:
         build_prefix += f'{build_prefix_extra}-'
