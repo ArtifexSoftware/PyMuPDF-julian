@@ -1240,7 +1240,7 @@ def build_extension(
                 '''
                 )
     else:
-        _log(f'Not running swig because up to date: {path_i}')
+        _log(f'Not running swig because up to date: {path_cpp}')
     
     if windows():
         python_version = ''.join(platform.python_version_tuple()[:2])
@@ -1313,6 +1313,11 @@ def build_extension(
         #
         command, pythonflags = base_compiler(cpp=cpp)
         
+        # setuptools on Linux seems to use slightly different compile flags:
+        #
+        # -fwrapv -O3 -Wall -O2 -g0 -DPY_CALL_TRAMPOLINE
+        #
+        
         general_flags = ''
         if debug:
             general_flags += ' -g'
@@ -1328,6 +1333,9 @@ def build_extension(
             
             # Avoid `Undefined symbols for ... "_PyArg_UnpackTuple" ...'.
             general_flags += ' -undefined dynamic_lookup'
+        elif pyodide():
+            path_so_leaf = f'_{name}.so'
+            rpath_flag = ''
         else:
             path_so_leaf = f'_{name}.so'
             rpath_flag = "-Wl,-rpath,'$ORIGIN',-z,origin"
@@ -1335,24 +1343,41 @@ def build_extension(
         # Fun fact - on Linux, if the -L and -l options are before '{path_cpp}'
         # they seem to be ignored...
         #
-        # We use compiler to compile and link in one command.
-        #
-        command = f'''
-                {command}
-                    -fPIC
-                    -shared
-                    {general_flags.strip()}
-                    {pythonflags.includes}
-                    {includes_text}
-                    {defines_text}
-                    {path_cpp}
-                    -o {path_so}
-                    {compiler_extra}
-                    {libpaths_text}
-                    {libs_text}
-                    {rpath_flag}
-                    {linker_extra}
-                    {pythonflags.ldflags}
+        
+        if pyodide():
+            # Looks like pyodide's `cc` can't compile and link in one invocation.
+            command = f'''
+                    {command}
+                        -fPIC
+                        {general_flags.strip()}
+                        {pythonflags.includes}
+                        {includes_text}
+                        {defines_text}
+                        -c {path_cpp}
+                        -o {path_cpp}.o
+                        {compiler_extra}
+                    '''
+            ld, _ = base_linker(cpp=cpp)
+            command += f'''
+                    && {ld} {path_cpp}.o -o {path_so}
+                    '''
+        else:
+            # We use compiler to compile and link in one command.
+            command = f'''
+                    {command}
+                        -fPIC
+                        {general_flags.strip()}
+                        {pythonflags.includes}
+                        {includes_text}
+                        {defines_text}
+                        {path_cpp}
+                        -o {path_so}
+                        {compiler_extra}
+                        {libpaths_text}
+                        {libs_text}
+                        {rpath_flag}
+                        {linker_extra}
+                        {pythonflags.ldflags}
                 '''
         if _doit( path_so, path_cpp, prerequisites_compile, prerequisites_link):
             run(command)
@@ -1383,7 +1408,21 @@ def build_extension(
 # Functions that might be useful.
 #
 
-def base_compiler(vs=None, flags=None, cpp=False):
+
+def show():
+    '''
+    For debugging; shows `sys.argv` and `os.environ`.
+    '''
+    _log(f'sys.argv ({len(sys.argv)}):')
+    for i, arg in enumerate(sys.argv):
+        _log(f'    {i}: {arg!r}')
+    _log(f'os.environ ({len(os.environ)}):')
+    for k in sorted( os.environ.keys()):
+        v = os.environ[ k]
+        _log( f'    {k}: {v!r}')
+
+
+def base_compiler(vs=None, flags=None, cpp=False, use_env=True):
     '''
     Returns basic compiler command.
     
@@ -1397,6 +1436,8 @@ def base_compiler(vs=None, flags=None, cpp=False):
         cpp:
             If true we return C++ compiler command instead of C. On Windows
             this has no effect - we always return cl.exe.
+        use_env:
+            If true we use os.environ['CC'] or os.environ['CXX'] if set.
     
     Returns (cc, flags):
         cc:
@@ -1407,18 +1448,20 @@ def base_compiler(vs=None, flags=None, cpp=False):
     '''
     if not flags:
         flags = PythonFlags()
-    if windows():
-        if not vs:
-            vs = wdev.WindowsVS()
-        cc = f'"{vs.vcvars}"&&"{vs.cl}"'
-    elif wasm():
-        cc = 'em++' if cpp else 'emcc'
-    else:
-        cc = 'c++' if cpp else 'cc'
+    cc = os.environ.get( 'CXX' if cpp else 'CC') if use_env else None
+    if not cc:
+        if windows():
+            if not vs:
+                vs = wdev.WindowsVS()
+            cc = f'"{vs.vcvars}"&&"{vs.cl}"'
+        elif wasm():
+            cc = 'em++' if cpp else 'emcc'
+        else:
+            cc = 'c++' if cpp else 'cc'
     return cc, flags
 
 
-def base_linker(vs=None, flags=None, cpp=False):
+def base_linker(vs=None, flags=None, cpp=False, use_env=True):
     '''
     Returns basic linker command.
     
@@ -1432,6 +1475,8 @@ def base_linker(vs=None, flags=None, cpp=False):
         cpp:
             If true we return C++ linker command instead of C. On Windows this
             has no effect - we always return link.exe.
+        use_env:
+            If true we use os.environ['LD'] if set.
     
     Returns (linker, flags):
         linker:
@@ -1442,6 +1487,7 @@ def base_linker(vs=None, flags=None, cpp=False):
     '''
     if not flags:
         flags = PythonFlags()
+    linker = os.environ.get( 'LD') if use_env else None
     if windows():
         if not vs:
             vs = wdev.WindowsVS()
@@ -1541,6 +1587,8 @@ def windows():
 def wasm():
     return os.environ.get( 'OS') in ('wasm', 'wasm-mt')
 
+def pyodide():
+    return os.environ.get( 'PYODIDE') == '1'
 
 class PythonFlags:
     '''
@@ -1559,11 +1607,11 @@ class PythonFlags:
             self.includes = f'/I{wp.root}\\include'
             self.libs = f'/LIBPATH:"{wp.root}\\libs"'
         
-        elif os.environ.get( 'PYODIDE_ROOT'):
-            _log(f'PYODIDE_ROOT is set.')
+        elif pyodide():
+            _log(f'PythonFlags: Pyodide.')
             _include_dir = os.environ[ 'PYO3_CROSS_INCLUDE_DIR']
             _lib_dir = os.environ[ 'PYO3_CROSS_LIB_DIR']
-            _log( 'PYODIDE_ROOT set. {_include_dir=} {_lib_dir=}')
+            _log( f'PythonFlags: Pyodide. {_include_dir=} {_lib_dir=}')
             self.includes = f'-I {_include_dir}'
             self.ldflags = f'-L {_lib_dir}'
         
