@@ -38,8 +38,8 @@ class Package:
     `setup.py` supporting PEP-517.
 
     We also support basic command line handling for use
-    with a legacy (pre-PEP-517) pip, implemented by
-    legacy distutils/setuptools, and also described in:
+    with a legacy (pre-PEP-517) pip, as implemented
+    by legacy distutils/setuptools and described in:
     https://pip.pypa.io/en/stable/reference/build-system/setup-py/
 
     Here is a `doctest` example of using pipcl to create a SWIG extension
@@ -187,8 +187,6 @@ class Package:
               * `Wheel-Version: 1.0`
               * `Root-Is-Purelib: false`
             * No support for signed wheels.
-            * See documentation for `fn_build()` for more information about
-              generated wheels.
 
         Sdists:
             We generate sdist's according to:
@@ -327,15 +325,19 @@ class Package:
 
                 For safety and convenience, can also returns a list of
                 files/directory paths to be deleted. Relative paths are
-                interpreted as relative to `root` and other paths are asserted
-                to be within `root`.
+                interpreted as relative to `root`. All paths are asserted to be
+                within `root`.
             
             fn_sdist:
                 A function taking no args that returns a list of paths, e.g.
                 using `pipcl.git_items()`, for files that should be copied
                 into the sdist. Relative paths are interpreted as relative to
                 `root`. It is an error if a path does not exist or is not a
-                file. The list must contain `pyproject.toml`.
+                file.
+                
+                The specification for sdists requires that the list contains
+                `pyproject.toml`; we enforce this with a diagnostic rather than
+                raising an exception, to allow legacy command-line usage.
             
             tag_python:
                 First element of wheel tag defined in PEP-425. If None we use
@@ -352,9 +354,11 @@ class Package:
                 For pure python packages use: `tag_platform=any`
             
             wheel_compression:
-                zipfile compression to use for wheels.
+                Used as `zipfile.ZipFile()`'s `compression` parameter when
+                creating wheels.
             wheel_compresslevel:
-                zipfile compression level for wheels.
+                Used as `zipfile.ZipFile()`'s `compresslevel` parameter when
+                creating wheels.
             
         '''        
         assert name
@@ -365,7 +369,7 @@ class Package:
                 assert isinstance( v, str), f'Not a string: {v!r}'
         def assert_str_or_multi( v):
             if v is not None:
-                assert isinstance( v, (str, tuple, list)), f'Not a string, tuple or set: {v!r}'
+                assert isinstance( v, (str, tuple, list)), f'Not a string, tuple or list: {v!r}'
         
         assert_str( name)
         assert_str( version)
@@ -393,7 +397,10 @@ class Package:
         assert re.match('([A-Z0-9]|[A-Z0-9][A-Z0-9._-]*[A-Z0-9])$', name, re.IGNORECASE)
         
         # PEP-440.
-        assert re.match(r'^([1-9][0-9]*!)?(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))*((a|b|rc)(0|[1-9][0-9]*))?(\.post(0|[1-9][0-9]*))?(\.dev(0|[1-9][0-9]*))?$', version)
+        assert re.match(
+                r'^([1-9][0-9]*!)?(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))*((a|b|rc)(0|[1-9][0-9]*))?(\.post(0|[1-9][0-9]*))?(\.dev(0|[1-9][0-9]*))?$',
+                version,
+                )
         
         # https://packaging.python.org/en/latest/specifications/binary-distribution-format/
         if tag_python:
@@ -477,44 +484,20 @@ class Package:
         #
         if self.tag_platform:
             tag_platform = self.tag_platform
-        elif 0 and platform.system() == 'Darwin':
-            # setuptools.distutils seems to get things wrong, e.g.
-            #
-            #   ERROR: grumbo-1.2.3-cp311-none-macosx_13_x86_64.whl is not a
-            #   supported wheel on this platform
-            #
-            # when `grumbo-1.2.3-cp311-none-macosx_13_0_x86_64.whl` appears to
-            # work ok.
-            #
-            # so we do it ourselves. Except... it seems that version `13_3`
-            # is not accepted by pip, which only lists `13_0` in pip debug
-            # --verbose. Similarly for `12_0`, `11_0`. But `10_16` is ok.
-            #
-            v, _, cpu = platform.mac_ver()
-            v = v.split('.')[:2]    # Just first two numbers.
-            v[1] = '0'
-            v = '_'.join(v)
-            tag_platform = f'macosx_{v}_{cpu}'
-            _log( f'MacOS tag_platform is: {tag_platform!r}')
         else:
             tag_platform = setuptools.distutils.util.get_platform().replace('-', '_').replace('.', '_')
-            if 0:
-                _log( f'From setuptools.distutils.util.get_platform(), tag_platform={tag_platform!r}.')
-                m = re.match( '^(macosx_[0-9]+_[0-9]+)_[0-9]+(_.+)$', tag_platform)
-                if m:
-                    tag_platform2 = f'{m.group(1)}{m.group(2)}'
-                    _log( f'Changing from {tag_platform!r} to {tag_platform2!r}')
-                    tag_platform = tag_platform2
-                _log( f'From setuptools.distutils.util.get_platform(), tag_platform={tag_platform!r}.')
-            if 1:
-                # E.g. `PyMuPDF-1.22.3-cp311-none-macosx_13_x86_64.whl`
-                # causes `pip` to fail with: `not a supported wheel on this
-                # platform`. So we add `_0` to the OS version.
-                m = re.match( '^(macosx_[0-9]+)(_[^0-9].+)$', tag_platform)
-                if m:
-                    tag_platform2 = f'{m.group(1)}_0{m.group(2)}'
-                    _log( f'Changing from {tag_platform!r} to {tag_platform2!r}')
-                    tag_platform = tag_platform2
+            
+            # We need to patch things on MacOS.
+            #
+            # E.g. `PyMuPDF-1.22.3-cp311-none-macosx_13_x86_64.whl`
+            # causes `pip` to fail with: `not a supported wheel on this
+            # platform`. We seem to need to add `_0` to the OS version.
+            #
+            m = re.match( '^(macosx_[0-9]+)(_[^0-9].+)$', tag_platform)
+            if m:
+                tag_platform2 = f'{m.group(1)}_0{m.group(2)}'
+                _log( f'Changing from {tag_platform!r} to {tag_platform2!r}')
+                tag_platform = tag_platform2
 
         # Final tag is, for example, 'cp39-none-win32', 'cp39-none-win_amd64'
         # or 'cp38-none-openbsd_6_8_amd64'.
@@ -525,10 +508,9 @@ class Package:
 
         # Do a build and get list of files to copy into the wheel.
         #
-        items = []
+        items = list()
         if self.fn_build:
-            _log(f'calling self.fn_build={self.fn_build}')
-            items = self.fn_build()
+            items = self._call_fn_build()
 
         _log(f'Creating wheel: {path}')
         os.makedirs(wheel_directory, exist_ok=True)
@@ -668,6 +650,19 @@ class Package:
         return os.path.basename(tarpath)
 
 
+    def install(self):
+        self._argv_install( record_path=None, root=None)
+    
+
+    def _call_fn_build( self):
+        assert self.fn_build
+        _log(f'calling self.fn_build={self.fn_build}')
+        ret = self.fn_build()
+        assert isinstance( ret, (list, tuple)), \
+                f'Expected list/tuple from {self.fn_build} but got: {ret!r}'
+        return ret
+        
+
     def _argv_clean(self, all_):
         '''
         Called by `handle_argv()`.
@@ -697,9 +692,9 @@ class Package:
         
         # Do a build and get list of files to install.
         #
-        items = []
+        items = list()
         if self.fn_build:
-            items = self.fn_build()
+            items = self._call_fn_build()
 
         if root is None:
             root = sysconfig.get_path('platlib')
@@ -1109,7 +1104,7 @@ class Package:
         `self._dist_info_dir()`.
 
         If `to_` starts with `$data/`, we replace this with
-        `self._dist_info_dir()`.
+        `{self.name}-{self.version}.data/`.
 
         `from_abs` and `to_abs` are absolute paths. We assert that `to_abs` is
         `within self.root`.
@@ -1147,7 +1142,6 @@ def build_extension(
         defines=None,
         libpaths=None,
         libs=None,
-        force=True,
         optimise=True,
         debug=False,
         compiler_extra='',
@@ -1165,13 +1159,14 @@ def build_extension(
         name:
             Name of generated extension module.
         path_i:
-            Path of input SWIG .i file. Internally we use swig to generate a
+            Path of input SWIG `.i` file. Internally we use swig to generate a
             corresponding `.c` or `.cpp` file.
         outdir:
             Output directory for generated files:
-                {outdir}/{name}.py
-                {outdir}/_{name}.so     # Unix
-                {outdir}/_{name}.*.pyd  # Windows
+            
+                * `{outdir}/{name}.py`
+                * `{outdir}/_{name}.so`     # Unix
+                * `{outdir}/_{name}.*.pyd`  # Windows
             We return the leafname of the `.so` or `.pyd` file.
         includes:
             A string, or a sequence of extra include directories to be prefixed
@@ -1184,14 +1179,6 @@ def build_extension(
             `/LIBPATH:` on Windows or `-L` on Unix.
         libs
             A string, or a sequence of library names to be prefixed with `-l`.
-        force:
-            Empty string or None:
-                Run commands if files seem to be out of date; this might
-                erroneously not rebuild.
-            False, 0 or '0':
-                Do not run any commands.
-            True, 1 or '1':
-                Always run commands.
         optimise:
             Whether to use compiler optimisations.
         debug:
@@ -1202,18 +1189,22 @@ def build_extension(
             Extra linker flags.
         swig:
             Base swig command.
+        cpp:
+            If true we generate C++ code with swig.
         prerequisites_swig:
         prerequisites_compile:
         prerequisites_link:
-            List of extra input files/directories that should force running of
-            swig, compile or link commands if they are newer than any existing
-            generated SWIG .i file, compiled object file or shared library
-            file.
-
-            In these lists, True forces re-run, False forces no re-run, None
-            is ignored. If an item is a directory path we look for newest file
-            within the tree.
+            Lists or tuples of extra input files/directories that should force
+            running of swig, compile or link commands if they are newer than
+            any existing generated SWIG `.i` file, compiled object file or
+            shared library file.
+            
+            If present, the first occurrence of `True` or `False` forces re-run
+            or no re-run. Any occurrence of None is ignored. If an item is a
+            directory path we look for newest file within the directory tree.
     
+            If not a list or tuple, we convert into a single-item list.
+
     Returns the leafname of the generated library file within `outdir`, e.g.
     `_{name}.so` on Unix or `_{name}.cp311-win_amd64.pyd` on Windows.
     '''
@@ -1222,10 +1213,9 @@ def build_extension(
     libpaths_text = _flags( libpaths, '/LIBPATH:', '"') if windows() else _flags( libpaths, '-L')
     libs_text = _flags( libs, '-l')
     path_cpp = f'{path_i}.cpp' if cpp else f'{path_i}.c'
-    if not os.path.exists( outdir):
-        os.mkdir( outdir)
+    os.makedirs( outdir, exist_ok=True)
+    
     # Run SWIG.
-    #run( f'{swig} -version')
     if _doit( path_cpp, path_i, prerequisites_swig):
         run( f'''
                 {swig}
@@ -1334,6 +1324,10 @@ def build_extension(
             # Avoid `Undefined symbols for ... "_PyArg_UnpackTuple" ...'.
             general_flags += ' -undefined dynamic_lookup'
         elif pyodide():
+            # Setting `-Wl,-rpath,'$ORIGIN',-z,origin` gives:
+            #   emcc: warning: ignoring unsupported linker flag: `-rpath` [-Wlinkflags]
+            #   wasm-ld: error: unknown -z value: origin
+            #
             path_so_leaf = f'_{name}.so'
             rpath_flag = ''
         else:
@@ -1359,13 +1353,21 @@ def build_extension(
                     '''
             ld, _ = base_linker(cpp=cpp)
             command += f'''
-                    && {ld} {path_cpp}.o -o {path_so}
+                    && {ld}
+                        {path_cpp}.o
+                        -o {path_so}
+                        {rpath_flag}
+                        {libpaths_text}
+                        {libs_text}
+                        {linker_extra}
+                        {pythonflags.ldflags}
                     '''
         else:
             # We use compiler to compile and link in one command.
             command = f'''
                     {command}
                         -fPIC
+                        -shared
                         {general_flags.strip()}
                         {pythonflags.includes}
                         {includes_text}
@@ -1424,7 +1426,7 @@ def show():
 
 def base_compiler(vs=None, flags=None, cpp=False, use_env=True):
     '''
-    Returns basic compiler command.
+    Returns basic compiler command and PythonFlags.
     
     Args:
         vs:
@@ -1435,14 +1437,14 @@ def base_compiler(vs=None, flags=None, cpp=False, use_env=True):
             `pipcl.PythonFlags` instance.
         cpp:
             If true we return C++ compiler command instead of C. On Windows
-            this has no effect - we always return cl.exe.
+            this has no effect - we always return `cl.exe`.
         use_env:
-            If true we use os.environ['CC'] or os.environ['CXX'] if set.
+            If true we use `os.environ['CC']` or `os.environ['CXX']` if set.
     
-    Returns (cc, flags):
+    Returns `(cc, flags)`:
         cc:
             C or C++ command. On Windows this is of the form
-            `{vs.vcvars}&&{vs.cl}`; otherwise it is `cc` or `c++`.
+            `{vs.vcvars}&&{vs.cl}`; otherwise it is typically `cc` or `c++`.
         flags:
             The `flags` arg or a new `pipcl.PythonFlags` instance.
     '''
@@ -1474,14 +1476,14 @@ def base_linker(vs=None, flags=None, cpp=False, use_env=True):
             `pipcl.PythonFlags` instance.
         cpp:
             If true we return C++ linker command instead of C. On Windows this
-            has no effect - we always return link.exe.
+            has no effect - we always return `link.exe`.
         use_env:
-            If true we use os.environ['LD'] if set.
+            If true we use `os.environ['LD']` if set.
     
-    Returns (linker, flags):
+    Returns `(linker, flags)`:
         linker:
             Linker command. On Windows this is of the form
-            `{vs.vcvars}&&{vs.link}`; otherwise it is `cc` or `c++`.
+            `{vs.vcvars}&&{vs.link}`; otherwise it is typically `cc` or `c++`.
         flags:
             The `flags` arg or a new `pipcl.PythonFlags` instance.
     '''
@@ -1516,7 +1518,7 @@ def git_items( directory, submodules=False):
 
     We run a `git ls-files` command internally.
 
-    This function can be useful for the `fn_sdist() callback.
+    This function can be useful for the `fn_sdist()` callback.
     '''
     command = 'cd ' + directory + ' && git ls-files'
     if submodules:
@@ -1598,7 +1600,7 @@ class PythonFlags:
     Members:
         .includes:
             String containing compiler flags for include paths.
-        .libs:
+        .ldflags:
             String containing linker flags for library paths.
     '''
     def __init__(self):
@@ -1641,8 +1643,9 @@ class PythonFlags:
 
 def macos_patch( library, *sublibraries):
     '''
-    Patches `library` so that all references to items in `sublibraries` are
-    changed to `@rpath/<leafname>`.
+    If running on MacOS, patches `library` so that all references to items in
+    `sublibraries` are changed to `@rpath/{leafname}`. Does nothing on other
+    platforms.
     
     library:
         Path of shared library.
@@ -1714,9 +1717,11 @@ def _doit( out, in_, prerequisites1, prerequisites2=None):
     
     out:
         Output path.
-    prerequisites:
-        List of input paths. If an item is None it is ignored, otherwise if an
-        item is not a string we immediately return it cast to a bool.
+    prerequisites1:
+    prerequisites2:
+        List of input paths or true/false/None. If an item is None it is
+        ignored, otherwise if an item is not a string we immediately return it
+        cast to a bool.
     '''
     _log( f'out={out!r}')
     _log( f'in={in_!r}')
