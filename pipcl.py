@@ -125,14 +125,20 @@ class Package:
         >>> _ = shutil.copy2('wdev.py', 'pipcl_test/wdev.py')
 
     Use `setup.py`'s command-line interface to build and install the extension
-    module into `pipcl_test/install/`.
+    module into root `pipcl_test/install`.
 
         >>> _ = subprocess.run(
         ...         f'cd pipcl_test && {sys.executable} setup.py --verbose --root install install',
         ...         shell=1, check=1)
 
+    The actual install directory depends on `sysconfig.get_path('platlib')`:
+    
+        >>> install_dir = f'pipcl_test/install/{sysconfig.get_path("platlib").lstrip(os.sep)}'
+        >>> assert os.path.isfile( f'{install_dir}/foo/__init__.py')
+
     Create a test script which asserts that Python function call `foo.bar(s)`
-    returns the length of `s`.
+    returns the length of `s`, and run it with `PYTHONPATH` set to the install
+    directory:
 
         >>> with open('pipcl_test/test.py', 'w') as f:
         ...     _ = f.write(textwrap.dedent("""
@@ -145,14 +151,11 @@ class Package:
         ...             print(f'test.py: foo.bar() returned: {l}')
         ...             assert l == len(text)
         ...             """))
-
-    Run the test script, setting `PYTHONPATH` so that `import foo` works.
-
         >>> r = subprocess.run(
-        ...         f'cd pipcl_test && {sys.executable} test.py',
+        ...         f'{sys.executable} pipcl_test/test.py',
         ...         shell=1, check=1, text=1,
         ...         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        ...         env=os.environ | dict(PYTHONPATH='install'),
+        ...         env=os.environ | dict(PYTHONPATH=install_dir),
         ...         )
         >>> print(r.stdout)
         test.py: calling foo.bar() with text='hello'
@@ -650,10 +653,6 @@ class Package:
         return os.path.basename(tarpath)
 
 
-    def install(self):
-        self._argv_install( record_path=None, root=None)
-    
-
     def _call_fn_build( self):
         assert self.fn_build
         _log(f'calling self.fn_build={self.fn_build}')
@@ -683,7 +682,7 @@ class Package:
                 shutil.rmtree(path, ignore_errors=True)
 
 
-    def _argv_install(self, record_path, root, verbose=False):
+    def install(self, record_path=None, root=None, verbose=False):
         '''
         Called by `handle_argv()` to handle `install` command..
         '''
@@ -696,17 +695,23 @@ class Package:
         if self.fn_build:
             items = self._call_fn_build()
 
-        if root is None:
-            root = sysconfig.get_path('platlib')
-            if verbose:
-                _log( f'Using sysconfig.get_path("platlib")={root!r}.')
-            # todo: for pure-python we should use sysconfig.get_path('purelib') ?
+        r = sysconfig.get_path('platlib')
+        if root:
+            # E.g. if `root` is `install' and `sysconfig.get_path('platlib')`
+            # is `/usr/local/lib/python3.9/site-packages`, we set `root2` to
+            # `install/usr/local/lib/python3.9/site-packages`.
+            #
+            r = r.lstrip( os.sep)
+            root2 = os.path.join( root, r)
+        else:
+            root2 = r
+        # todo: for pure-python we should use sysconfig.get_path('purelib') ?
         
-        _log( f'Installing into {root=}')
+        _log( f'Installing into: {root2!r}')
         dist_info_dir = self._dist_info_dir()
         
         if not record_path:
-            record_path = f'{root}/{dist_info_dir}/RECORD'
+            record_path = f'{root2}/{dist_info_dir}/RECORD'
         record = _Record()
         
         def add_file(from_abs, from_rel, to_abs, to_rel):
@@ -726,10 +731,10 @@ class Package:
         
         for item in items:
             (from_abs, from_rel), (to_abs, to_rel) = self._fromto(item)
-            to_abs2 = f'{root}/{to_rel}'
+            to_abs2 = f'{root2}/{to_rel}'
             add_file( from_abs, from_rel, to_abs2, to_rel)
         
-        add_str( self._metainfo(), f'{root}/{dist_info_dir}/METADATA', f'{dist_info_dir}/METADATA')
+        add_str( self._metainfo(), f'{root2}/{dist_info_dir}/METADATA', f'{dist_info_dir}/METADATA')
 
         if verbose:
             _log( f'Writing to: {record_path}')
@@ -927,7 +932,7 @@ class Package:
         elif command == 'clean':        self._argv_clean(opt_all)
         elif command == 'dist_info':    self._argv_dist_info(opt_egg_base)
         elif command == 'egg_info':     self._argv_egg_info(opt_egg_base)
-        elif command == 'install':      self._argv_install(opt_record, opt_root, opt_verbose)
+        elif command == 'install':      self.install(opt_record, opt_root, opt_verbose)
         elif command == 'sdist':        self.build_sdist(opt_dist_dir, opt_formats, verbose=opt_verbose)
         
         elif command == 'windows-python':
