@@ -87,10 +87,6 @@ Environmental variables:
     PYMUPDF_SETUP_MUPDF_REBUILD
         If 0 we do not (re)build mupdf.
 
-    PYMUPDF_SETUP_REBUILD
-        If 0 we do not rebuild mupdfpy. If 1 we always rebuild mupdfpy. If
-        unset we rebuild if necessary.
-
     PYMUPDF_SETUP_REBUILD_GIT_DETAILS
         If '0' we do not rebuild if only fitz/helper-git-versions.i has
         changed.
@@ -785,6 +781,8 @@ def _build_extensions( mupdf_local, mupdf_build_dir, build_type):
                 f'{mupdf_local}\\platform\\win32\\x64\\Release',
                 f'{mupdf_local}\\platform\\win32\\x64\\ReleaseTesseract',
                 )
+        libs = 'mupdfcpp64.lib'
+        libraries = f'{mupdf_local}\\platform\\win32\\x64\\Release\\{libs}'
         compiler_extra = ''
         linker_extra = ''
         optimise = True
@@ -793,6 +791,8 @@ def _build_extensions( mupdf_local, mupdf_build_dir, build_type):
         mupdf_build_dir_flags = os.path.basename( mupdf_build_dir).split( '-')
         defines = None
         libpaths = (mupdf_build_dir,)
+        libs = ['mupdf']
+        libraries = f'{mupdf_build_dir}/{libs[0]}'
         compiler_extra += (
                 ' -Wall'
                 ' -Wno-deprecated-declarations'
@@ -803,7 +803,6 @@ def _build_extensions( mupdf_local, mupdf_build_dir, build_type):
         linker_extra = ''
         optimise = 'release' in mupdf_build_dir_flags
         debug = 'debug' in mupdf_build_dir_flags
-    force = os.environ.get('PYMUPDF_SETUP_REBUILD')
     
     path_so_leaf_a = None
     path_so_leaf_b = None
@@ -842,12 +841,6 @@ def _build_extensions( mupdf_local, mupdf_build_dir, build_type):
         f.write('%}\n')
         _fs_update( f.getvalue(), 'fitz/helper-git-versions.i')
 
-        libs = 'mupdfcpp64.lib' if windows else ('mupdf',)
-        # Default to force=true because pipcl does not look at mtime of
-        # included .i files.
-        force2 = force
-        if force2 is None:
-            force2 = True
         compiler_extra_c = (
                 ' -Wno-incompatible-pointer-types'
                 ' -Wno-pointer-sign'
@@ -867,11 +860,12 @@ def _build_extensions( mupdf_local, mupdf_build_dir, build_type):
                 libs = libs,
                 compiler_extra = compiler_extra + compiler_extra_c,
                 linker_extra = linker_extra,
-                force = force2,
                 optimise = optimise,
                 debug = debug,
                 cpp = False,
                 prerequisites_swig = prerequisites_swig,
+                prerequisites_compile = f'{mupdf_local}/include',
+                prerequisites_link = libraries,
                 )
 
     if mupdf_local:
@@ -894,6 +888,11 @@ def _build_extensions( mupdf_local, mupdf_build_dir, build_type):
             # not having `nothrow` to match the base exception class.
             compile_extra_cpp += ' -std=c++14'
         libs = 'mupdfcpp64.lib' if windows else ('mupdf', 'mupdfcpp')
+        if not windows:
+            libraries = [
+                    f'{mupdf_build_dir}/libmupdf.so'
+                    f'{mupdf_build_dir}/libmupdfcpp.so'
+                    ]
         path_so_leaf_b = pipcl.build_extension(
                 name = 'extra',
                 path_i = f'{g_root}/src/extra.i',
@@ -904,9 +903,11 @@ def _build_extensions( mupdf_local, mupdf_build_dir, build_type):
                 libs = libs,
                 compiler_extra = compiler_extra + compile_extra_cpp,
                 linker_extra = linker_extra,
-                force = force,
                 optimise = optimise,
                 debug = debug,
+                prerequisites_swig = None,
+                prerequisites_compile = f'{mupdf_local}/include',
+                prerequisites_link = libraries,
                 )
     
     return path_so_leaf_a, path_so_leaf_b
