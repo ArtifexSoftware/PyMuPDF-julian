@@ -2,7 +2,7 @@ name: Test mupdf release branch
 
 on:
   schedule:
-    - cron: '20 6 * * *'
+    #- cron: '20 6 * * *'
   workflow_dispatch:
 
 jobs:
@@ -49,5 +49,5 @@ jobs:
 
             # Get cibuildwheel to run pytest with each wheel.
             CIBW_TEST_REQUIRES: "fontTools pytest"
-            CIBW_TEST_COMMAND: "pytest -s {project}/tests"
+            CIBW_TEST_COMMAND: "python {project}/tests/run_compound.py pytest -s {project}/tests"
             CIBW_BUILD_VERBOSITY: 3
