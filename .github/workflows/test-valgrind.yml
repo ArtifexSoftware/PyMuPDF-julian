@@ -90,7 +90,9 @@ jobs:
 
             log('Running PyMuPDF tests under valgrind.')
             # We ignore memory leaks.
-            run(f'valgrind --error-exitcode=100 --errors-for-leak-kinds=none --fullpath-after= ./pylocal/bin/python -m pytest -s -vv {leaf}',
+            run(
+                    #f'valgrind --error-exitcode=100 --errors-for-leak-kinds=none --fullpath-after= ./pylocal/bin/python -m pytest -s -vv {leaf}',
+                    f'./pylocal/bin/python {leaf}/tests/run_compound.py valgrind --error-exitcode=100 --errors-for-leak-kinds=none --fullpath-after= ./pylocal/bin/python -m pytest -s -vv {leaf}',
                     env_extra=dict(
                         PYTHONMALLOC='malloc',
                         ),
