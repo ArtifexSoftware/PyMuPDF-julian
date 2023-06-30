@@ -1,7 +1,7 @@
 name: Test
 
 on:
-  schedule:
+  #schedule:
     #- cron: '13 5 * * *'
   workflow_dispatch:
 
