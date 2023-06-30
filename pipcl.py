@@ -460,14 +460,11 @@ class Package:
 
         Returns leafname of generated wheel within `wheel_directory`.
         '''
-        _log(f'wheel_directory={wheel_directory}'
-                f' config_settings={config_settings}'
-                f' metadata_directory={metadata_directory}'
+        _log(
+                f' wheel_directory={wheel_directory!r}'
+                f' config_settings={config_settings!r}'
+                f' metadata_directory={metadata_directory!r}'
                 )
-        _log('os.environ is:')
-        for n in sorted( os.environ.keys()):
-            v = os.environ[ n]
-            _log( f'    {n}: {v!r}')
 
         # Get two-digit python version, e.g. 'cp3.8' for python-3.8.6.
         #
@@ -581,8 +578,11 @@ class Package:
 
         Returns leafname of generated archive within `sdist_directory`.
         '''
-        if verbose:
-            _log( f'formats={formats}')
+        _log(
+                f' sdist_directory={sdist_directory!r}'
+                f' formats={formats!r}'
+                f' config_settings={config_settings!r}'
+                )
         if formats and formats != 'gztar':
             raise Exception( f'Unsupported: formats={formats}')
         paths = []
@@ -1414,19 +1414,6 @@ def build_extension(
 
 # Functions that might be useful.
 #
-
-
-def show():
-    '''
-    For debugging; shows `sys.argv` and `os.environ`.
-    '''
-    _log(f'sys.argv ({len(sys.argv)}):')
-    for i, arg in enumerate(sys.argv):
-        _log(f'    {i}: {arg!r}')
-    _log(f'os.environ ({len(os.environ)}):')
-    for k in sorted( os.environ.keys()):
-        v = os.environ[ k]
-        _log( f'    {k}: {v!r}')
 
 
 def base_compiler(vs=None, flags=None, cpp=False, use_env=True):
