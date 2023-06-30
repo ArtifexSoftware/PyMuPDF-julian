@@ -1249,7 +1249,7 @@ def build_extension(
         T = '/Tp' if cpp else '/Tc'
         optimise2 = '/DNDEBUG /O2' if optimise else ''
         
-        command, flags = base_compiler(cpp=cpp)
+        command, pythonflags = base_compiler(cpp=cpp)
         command = f'''
                 {command}
                     # General:
@@ -1263,7 +1263,7 @@ def build_extension(
 
                     # Include paths:
                     {includes_text}
-                    {flags.includes}            # Include path for Python headers.
+                    {pythonflags.includes}      # Include path for Python headers.
 
                     # Code generation:
                     {optimise2}
@@ -1283,14 +1283,14 @@ def build_extension(
         else:
             _log(f'Not compiling because up to date: {path_obj}')
 
-        command, flags = base_linker(cpp=cpp)
+        command, pythonflags = base_linker(cpp=cpp)
         command = f'''
                 {command}
                     /DLL                    # Builds a DLL.
                     /EXPORT:PyInit__{name}  # Exports a function.
                     /IMPLIB:{base}.lib      # Overrides the default import library name.
                     {libpaths_text}
-                    {flags.libs}
+                    {pythonflags.ldflags}
                     /OUT:{path_so}          # Specifies the output file name.
                     /nologo
                     {libs_text}
@@ -1416,7 +1416,7 @@ def build_extension(
 #
 
 
-def base_compiler(vs=None, flags=None, cpp=False, use_env=True):
+def base_compiler(vs=None, pythonflags=None, cpp=False, use_env=True):
     '''
     Returns basic compiler command and PythonFlags.
     
@@ -1424,7 +1424,7 @@ def base_compiler(vs=None, flags=None, cpp=False, use_env=True):
         vs:
             Windows only. A `wdev.WindowsVS` instance or None to use default
             `wdev.WindowsVS` instance.
-        flags:
+        pythonflags:
             A `pipcl.PythonFlags` instance or None to use default
             `pipcl.PythonFlags` instance.
         cpp:
@@ -1433,15 +1433,15 @@ def base_compiler(vs=None, flags=None, cpp=False, use_env=True):
         use_env:
             If true we use `os.environ['CC']` or `os.environ['CXX']` if set.
     
-    Returns `(cc, flags)`:
+    Returns `(cc, pythonflags)`:
         cc:
             C or C++ command. On Windows this is of the form
             `{vs.vcvars}&&{vs.cl}`; otherwise it is typically `cc` or `c++`.
-        flags:
-            The `flags` arg or a new `pipcl.PythonFlags` instance.
+        pythonflags:
+            The `pythonflags` arg or a new `pipcl.PythonFlags` instance.
     '''
-    if not flags:
-        flags = PythonFlags()
+    if not pythonflags:
+        pythonflags = PythonFlags()
     cc = os.environ.get( 'CXX' if cpp else 'CC') if use_env else None
     if not cc:
         if windows():
@@ -1452,10 +1452,10 @@ def base_compiler(vs=None, flags=None, cpp=False, use_env=True):
             cc = 'em++' if cpp else 'emcc'
         else:
             cc = 'c++' if cpp else 'cc'
-    return cc, flags
+    return cc, pythonflags
 
 
-def base_linker(vs=None, flags=None, cpp=False, use_env=True):
+def base_linker(vs=None, pythonflags=None, cpp=False, use_env=True):
     '''
     Returns basic linker command.
     
@@ -1463,7 +1463,7 @@ def base_linker(vs=None, flags=None, cpp=False, use_env=True):
         vs:
             Windows only. A `wdev.WindowsVS` instance or None to use default
             `wdev.WindowsVS` instance.
-        flags:
+        pythonflags:
             A `pipcl.PythonFlags` instance or None to use default
             `pipcl.PythonFlags` instance.
         cpp:
@@ -1472,15 +1472,15 @@ def base_linker(vs=None, flags=None, cpp=False, use_env=True):
         use_env:
             If true we use `os.environ['LD']` if set.
     
-    Returns `(linker, flags)`:
+    Returns `(linker, pythonflags)`:
         linker:
             Linker command. On Windows this is of the form
             `{vs.vcvars}&&{vs.link}`; otherwise it is typically `cc` or `c++`.
-        flags:
-            The `flags` arg or a new `pipcl.PythonFlags` instance.
+        pythonflags:
+            The `pythonflags` arg or a new `pipcl.PythonFlags` instance.
     '''
-    if not flags:
-        flags = PythonFlags()
+    if not pythonflags:
+        pythonflags = PythonFlags()
     linker = os.environ.get( 'LD') if use_env else None
     if windows():
         if not vs:
@@ -1490,7 +1490,7 @@ def base_linker(vs=None, flags=None, cpp=False, use_env=True):
         linker = 'em++' if cpp else 'emcc'
     else:
         linker = 'c++' if cpp else 'cc'
-    return linker, flags
+    return linker, pythonflags
     
 
 def git_items( directory, submodules=False):
@@ -1599,7 +1599,7 @@ class PythonFlags:
         if windows():
             wp = wdev.WindowsPython()
             self.includes = f'/I{wp.root}\\include'
-            self.libs = f'/LIBPATH:"{wp.root}\\libs"'
+            self.ldflags = f'/LIBPATH:"{wp.root}\\libs"'
         
         elif pyodide():
             _log(f'PythonFlags: Pyodide.')
@@ -1626,7 +1626,7 @@ class PythonFlags:
                 python_config = f'{python_exe}-config'
             self.includes = run( f'{python_config} --includes', capture=1).strip()
             #if darwin():
-            #    self.libs = 
+            #    self.ldflags = 
             self.ldflags = run( f'{python_config} --ldflags', capture=1).strip()
         
         _log(f'self.includes={self.includes!r}')
