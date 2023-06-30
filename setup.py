@@ -821,7 +821,7 @@ def _build_extensions( mupdf_local, mupdf_build_dir, build_type):
         else:
             includes = None
         
-        # Update git info file.
+        # Update helper-git-versions.i.
         f = io.StringIO()
         f.write('%pythoncode %{\n')
         def repr_escape(text):
@@ -843,14 +843,26 @@ def _build_extensions( mupdf_local, mupdf_build_dir, build_type):
         f.write('%}\n')
         _fs_update( f.getvalue(), 'fitz/helper-git-versions.i')
 
-        compiler_extra_c = (
-                ' -Wno-incompatible-pointer-types'
-                ' -Wno-pointer-sign'
-                ' -Wno-sign-compare'
-                )
+        if windows:
+            compiler_extra_c = ''
+        else:
+            compiler_extra_c = (
+                    ' -Wno-incompatible-pointer-types'
+                    ' -Wno-pointer-sign'
+                    ' -Wno-sign-compare'
+                    )
         prerequisites_swig = glob.glob( f'{g_root}/fitz/*.i')
         if os.environ.get( 'PYMUPDF_SETUP_REBUILD_GIT_DETAILS') == '0':
-            prerequisites_swig.remove( f'{g_root}/fitz/helper-git-versions.i')
+            # Remove helper-git-versions.i from prerequisites_swig so
+            # it doesn't force rebuild on its own. [Cannot easily use
+            # prerequisites_swig.remove() because / vs \ on Windows.]
+            #
+            for i, p in enumerate( prerequisites_swig):
+                if p.endswith( 'helper-git-versions.i'):
+                    del prerequisites_swig[i]
+                    break
+            else:
+                assert 0, f'Cannot find *helper-git-versions.i in prerequisites_swig: {prerequisites_swig}'
         
         path_so_leaf_a = pipcl.build_extension(
                 name = 'fitz',
