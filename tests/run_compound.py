@@ -42,7 +42,9 @@ def main():
     # import fitz_new as fitz.
     #
     d = os.path.abspath( f'{__file__}/../resources')
-    d = os.path.relpath( d)
+    
+    # [Must not do `d = os.path.relpath(d)` because it fails on Windows if
+    # __file__ is on different drive from cwd.]
     
     with open( f'{d}/fitz.py', 'w') as f:
         f.write( textwrap.dedent( f'''
