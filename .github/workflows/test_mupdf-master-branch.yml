@@ -41,6 +41,9 @@ jobs:
             # Build on single cpu.
             CIBW_ARCHS_LINUX: x86_64
 
+            # For now we omit win32, because win32 libclang is broken.
+            CIBW_ARCHS_WINDOWS: "AMD64"
+            
             # Build for single python version.
             CIBW_BUILD: "cp311*"
 
