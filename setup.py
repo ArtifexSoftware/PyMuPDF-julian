@@ -142,6 +142,8 @@ if 1:
     # For debugging.
     log(f'### Starting.')
     log(f'__name__: {__name__!r}')
+    log(f'platform.platform(): {platform.platform()!r}')
+    log(f'platform.python_version(): {platform.python_version()!r}')
     log(f'sys.executable: {sys.executable!r}')
     log(f'__file__: {__file__!r}')
     log(f'os.getcwd(): {os.getcwd()!r}')
