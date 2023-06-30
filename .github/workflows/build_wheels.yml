@@ -92,6 +92,9 @@ jobs:
             # For testing, use MuPDF master.
             CIBW_ENVIRONMENT: PYMUPDF_SETUP_MUPDF_TGZ="" PYMUPDF_SETUP_MUPDF_BUILD="git:--recursive --depth 1 --shallow-submodules --branch master https://github.com/ArtifexSoftware/mupdf.git"
             
+            # For now we omit win32, because win32 libclang is broken.
+            CIBW_ARCHS_WINDOWS: "AMD64"
+            
             # For testing, build for single python version.
             #
             CIBW_BUILD: "cp311*"
