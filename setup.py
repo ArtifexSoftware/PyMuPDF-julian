@@ -53,7 +53,7 @@ Environmental variables:
         
         Must be unset or a combination of 'p', 'b' and 'd'.
         
-        Default is 'pb'.
+        Default is 'pbd'.
         
         'p':
             Generated wheel contains PyMuPDF code.
