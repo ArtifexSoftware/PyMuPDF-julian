@@ -1319,7 +1319,7 @@ if PYMUPDF_SETUP_URL_WHEEL:
         else:
             assert 0, f'Unrecognised prefix in {PYMUPDF_SETUP_URL_WHEEL=}.'
         
-        log(f'Renaming from {out_path_temp=} to {out_path=}.')
+        log(f'Renaming from:\n    {out_path_temp=}\nto:\n    {out_path=}.')
         os.rename(out_path_temp, out_path)
         return os.path.basename(out_path)
 else:
