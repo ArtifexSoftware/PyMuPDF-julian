@@ -13,8 +13,9 @@ This class is a collection of utility methods and attributes, mainly around memo
 :meth:`Tools.gen_id`                   generate a unique identifier
 :meth:`Tools.store_shrink`             shrink the storables cache [#f1]_
 :meth:`Tools.mupdf_warnings`           return the accumulated MuPDF warnings
-:meth:`Tools.mupdf_display_errors`     return the accumulated MuPDF warnings
-:meth:`Tools.reset_mupdf_warnings`     empty MuPDF messages on STDOUT
+:meth:`Tools.mupdf_display_errors`     control whether MuPDF errors are displayed as messages.
+:meth:`Tools.mupdf_display_warnings`   control whether MuPDF warnings are displayed as messages.
+:meth:`Tools.reset_mupdf_warnings`     Empty MuPDF warnings/errors message buffer.
 :meth:`Tools.set_aa_level`             set the anti-aliasing values
 :meth:`Tools.set_annot_stem`           set the prefix of new annotation / link ids
 :meth:`Tools.set_small_glyph_heights`  search and extract using small bbox heights

@@ -127,19 +127,78 @@ It features maintaining any metadata, table of contents and links contained in t
 
 
 
-How to Deal with Messages Issued by :title:`MuPDF`
+Diagnostics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Since |PyMuPDF| v1.16.0, **error messages** issued by the underlying :title:`MuPDF` library are being redirected to the Python standard device *sys.stderr*. So you can handle them like any other output going to this devices.
+PyMuPDF messages.
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-In addition, these messages go to the internal buffer together with any :title:`MuPDF` warnings -- see below.
+PyMuPDF has a "message" system for showing text diagnostics.
 
-We always prefix these messages with an identifying string *"mupdf:"*.
-If you prefer to not see recoverable MuPDF errors at all, issue the command `pymupdf.TOOLS.mupdf_display_errors(False)`.
+By default messages are written to `sys.stdout`. This can be controlled in
+different ways:
 
-MuPDF warnings continue to be stored in an internal buffer and can be viewed using :meth:`Tools.mupdf_warnings`.
+*
+  Send messsages to a file descriptor or file by setting environment variable
+  `PYMUPDF_MESSAGE` before PyMuPDF is imported:
 
-Please note that MuPDF errors may or may not lead to Python exceptions. In other words, you may see error messages from which MuPDF can recover and continue processing.
+  *
+    If the value starts with `fd:`, the remaining text should be an integer file
+    descriptor to which messages are written.
+    
+    * For example `PYMUPDF_MESSAGE=fd:2` will send messages to stderr.
+  *
+    If the value starts with `path:`, the remaining text is the path of a file to which
+    messages are written. If the file already exists, it is truncated.
+  *
+    If the value starts with `path+:`, the remaining text is the path of file to which
+    messages are written. If the file already exists, we append output.
+
+  * Other values will cause an error.
+
+*
+  Send messages to to `Python's logging system
+  <https://docs.python.org/3/library/logging.html>`_:
+  
+  * Call `use_python_logging(logger=None, fn_message=None)`:
+
+    * `logger`:
+      If `None` we use `logging.getLogger('pymupdf')`.
+    * `fn_message`:
+      The function that is called with PyMuPDF message text. If `None` we use
+      `logger.warning()`.
+    
+  *
+    Set environment variable `PYMUPDF_USE_PYTHON_LOGGING` before PyMuPDF is
+    imported.
+
+    *
+      If the value is `1`, this will call `use_python_logging()` with default
+      args when PyMuPDF is imported.
+    * Other values are ignored.
+
+
+MuPDF errors and warnings.
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+MuPDF generates text errors and warnings.
+
+*
+  These errors and warnings are appended to an internal list, accessible with
+  `Tools.mupdf_warnings()`. Also see `Tools.reset_mupdf_warnings()`.
+
+*
+  By default these errors and warnings are also sent to the PyMuPDF message
+  system.
+  
+  * This can be controlled with `mupdf_display_errors()` and
+    `mupdf_display_warnings()`.
+  
+  *
+    These messages are prefixed with `MuPDF error: ` and `MuPDF warning: `
+    respectively.
+  
+Some MuPDF errors may lead to Python exceptions.
 
 Example output for a **recoverable error**. We are opening a damaged PDF, but MuPDF is able to repair it and gives us a little information on what happened. Then we illustrate how to find out whether the document can later be saved incrementally. Checking the :attr:`Document.is_dirty` attribute at this point also indicates that during `pymupdf.open` the document had to be repaired:
 
