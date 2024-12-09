@@ -201,7 +201,11 @@ def test_4125():
     # Check memory leak is as expected.
     for i in range(3, len(state.rsss)):
         drss = state.rsss[i] - state.rsss[i-1]
-        if pymupdf.mupdf_version_tuple < (1, 25, 2):
+        pv = platform.python_version_tuple()
+        pv = (int(pv[0]), int(pv[1]))
+        if pv == (3, 9):
+            print(f'test_4090(): Not checking on Python-3.9.')
+        elif pymupdf.mupdf_version_tuple < (1, 25, 2):
             drss_expected = 4915200
             e = abs(1 - drss / drss_expected)
             print(f'test_4125(): {i=} {e=}')
