@@ -189,6 +189,7 @@ import stat
 import subprocess
 import sys
 import tarfile
+import tempfile
 import urllib.request
 import zipfile
 
@@ -208,6 +209,11 @@ def log( text):
     sys.stdout.flush()
 
 
+def run(command, check=1):
+    log(f'Running: {command}')
+    return subprocess.run( command, shell=1, check=check)
+
+
 if 1:
     # For debugging.
     log(f'### Starting.')
@@ -218,6 +224,7 @@ if 1:
     log(f'CPU bits: {32 if sys.maxsize == 2**31 - 1 else 64} {sys.maxsize=}')
     log(f'__file__: {__file__!r}')
     log(f'os.getcwd(): {os.getcwd()!r}')
+    log(f'getconf ARG_MAX: {pipcl.run("getconf ARG_MAX", capture=1, check=0, verbose=0)!r}')
     log(f'sys.argv ({len(sys.argv)}):')
     for i, arg in enumerate(sys.argv):
         log(f'    {i}: {arg!r}')
@@ -269,11 +276,6 @@ def _fs_remove(path):
         shutil.rmtree( path, onerror=error_fn)
     
     assert not os.path.exists( path)
-
-
-def run(command, check=1):
-    log(f'Running: {command}')
-    return subprocess.run( command, shell=1, check=check)
 
 
 def _git_get_branch( directory):
@@ -364,7 +366,7 @@ def tar_extract(path, mode='r:gz', prefix=None, exists='raise'):
     return prefix_actual
 
 
-def get_git_id( directory):
+def git_info( directory):
     '''
     Returns `(sha, comment, diff, branch)`, all items are str or None if not
     available.
@@ -390,8 +392,40 @@ def get_git_id( directory):
             )
     if cp.returncode == 0:
         branch = cp.stdout.strip()
-    log(f'get_git_id(): directory={directory!r} returning branch={branch!r} sha={sha!r} comment={comment!r}')
+    log(f'git_info(): directory={directory!r} returning branch={branch!r} sha={sha!r} comment={comment!r}')
     return sha, comment, diff, branch
+
+
+def git_patch(directory, patch, hard=False):
+    '''
+    Applies string <patch> with `git patch` in <directory>.
+    
+    If <hard> is true we clean the tree with `git checkout .` and then apply
+    the patch.
+
+    Otherwise we apply patch only if it is not already applied; this might fail
+    if there are conflicting changes in the tree.
+    '''
+    log(f'Applying patch in {directory}:\n{textwrap.indent(patch, "    ")}')
+    if not patch:
+        return
+    # Carriage returns break `git apply` so we use `newline='\n'` in open().
+    path = os.path.abspath(f'{directory}/pymupdf_patch.txt')
+    with open(path, 'w', newline='\n') as f:
+        f.write(patch)
+    log(f'Using patch file: {path}')
+    if hard:
+        run(f'cd {directory} && git checkout .')
+        run(f'cd {directory} && git apply {path}')
+        log(f'Have applied patch in {directory}.')
+    else:
+        e = run( f'cd {directory} && git apply --check --reverse {path}', check=0)
+        if e == 0:
+            log(f'Not patching {directory} because already patched.')
+        else:
+            run(f'cd {directory} && git apply {path}')
+            log(f'Have applied patch in {directory}.')
+    run(f'cd {directory} && git diff')
 
 
 mupdf_tgz = os.path.abspath( f'{__file__}/../mupdf.tgz')
@@ -444,12 +478,52 @@ def get_mupdf_internal(out, location=None, sha=None, local_tgz=None):
         if e:
             # No existing git checkout, so do a fresh clone.
             _fs_remove(local_dir)
-            run(f'git clone --recursive --depth 1 --shallow-submodules {location[4:]} {local_dir}')
+            gitargs = location[4:]
+            run(f'git clone --recursive --depth 1 --shallow-submodules {gitargs} {local_dir}')
 
         # Show sha of checkout.
         run( f'cd {local_dir} && git show --pretty=oneline|head -n 1', check=False)
         if sha:
             run( f'cd {local_dir} && git checkout {sha}')
+        sha, comment, diff, branch = git_info(local_dir)
+        if branch == 'master':
+            # 2025-02-25: MuPDF build fails due to long link command.
+            log(f'Patching MuPDF because branch is master.')
+            patch = textwrap.dedent(
+                    '''
+                    diff --git a/Makefile b/Makefile
+                    index 35d5305ef..9231e7c06 100644
+                    --- a/Makefile
+                    +++ b/Makefile
+                    @@ -86,11 +86,22 @@ GENDEF_CMD = $(QUIET_GENDEF) gendef - $< > $@
+                     DLLTOOL_CMD = $(QUIET_DLLTOOL) dlltool -d $< -D $(notdir $(^:%.def=%.dll)) -l $@
+
+                     ifeq ($(shared),yes)
+                    +ifeq ($(OS),Linux)
+                    +LINK_CMD = \
+                    +       $(file >$@.args, \
+                    +               $(filter-out %.$(SO)$(SO_VERSION),$^) \
+                    +               $(sort $(patsubst %,-L%,$(dir $(filter %.$(SO)$(SO_VERSION),$^)))) \
+                    +               $(patsubst lib%.$(SO)$(SO_VERSION),-l%,$(notdir $(filter %.$(SO)$(SO_VERSION),$^))) \
+                    +               $(LIBS) \
+                    +               ) \
+                    +       $(QUIET_LINK) $(MKTGTDIR) ; $(CC) $(LDFLAGS) -o $@ @$@.args
+                    +else
+                     LINK_CMD = $(QUIET_LINK) $(MKTGTDIR) ; $(CC) $(LDFLAGS) -o $@ \
+                    -       $(filter-out %.$(SO)$(SO_VERSION),$^) \
+                    -       $(sort $(patsubst %,-L%,$(dir $(filter %.$(SO)$(SO_VERSION),$^)))) \
+                    -       $(patsubst lib%.$(SO)$(SO_VERSION),-l%,$(notdir $(filter %.$(SO)$(SO_VERSION),$^))) \
+                    -       $(LIBS)
+                    +   $(filter-out %.$(SO)$(SO_VERSION),$^) \
+                    +   $(sort $(patsubst %,-L%,$(dir $(filter %.$(SO)$(SO_VERSION),$^)))) \
+                    +   $(patsubst lib%.$(SO)$(SO_VERSION),-l%,$(notdir $(filter %.$(SO)$(SO_VERSION),$^))) \
+                    +   $(LIBS)
+                    +endif
+                     endif
+
+                     # --- Rules ---
+                    ''')
+            git_patch(local_dir, patch)
     elif '://' in location:
         # Download .tgz.
         local_tgz = os.path.basename( location)
