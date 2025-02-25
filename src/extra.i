@@ -4094,6 +4094,78 @@ void pixmap_copy( fz_pixmap* pm, const fz_pixmap* src, int n)
     }
 }
 
+#if 0
+fz_matrix page_transformation_matrix(pdf_page* page)
+{
+    fz_rect mediabox = {0, 0, 1, 1};
+    fz_matrix ctm = {1, 0, 0, 1, 0, 0};
+    pdf_page_transform(page, page, mediabox, ctm);
+    if (JM_page_rotation(page) % 360 != 0)
+    {
+        cropbox = JM_cropbox(page);
+        ctm = fz_make_matrix(1, 0, 0, -1, 0, cropbox.height);
+    }
+    return ctm;
+}
+
+void annot_skel_goto1(char *buffer, int buffer_len, int ref, float x, float y, float zoom, fz_rect rect)
+{
+    fz_snprintf(
+            buffer,
+            buffer_len,
+            "<</A<</S/GoTo/D[%i 0 R/XYZ %g %g %g]>>/Rect[%f %f %f %f]/BS<</W 0>>/Subtype/Link>>",
+            ref,
+            x, y, zoom,
+            rect.x0, rect.y0, rect.x1, rect.y1
+            );
+}
+
+std::string getLinkText(pdf_page* page, lnk: dict)
+{
+    fz_matrix ctm = page_transformation_matrix(page);
+    fz_matrix ictm = (ctm);
+    fz_rect rect = fz_transform_rect(lnk.from, ictm);
+    char txt[200];
+    if (lnk.kind == 1 /*LINK_GOTO*/)
+    {
+        if (lnk.page >= 0)
+        {
+            int xref = page_xref(page->doc, lnk.page);
+            fz_point pnt = lnk.to;
+            int pno = lnk.page;
+            fz_page* dest_page = pdf_load_page(pag->parent, pno);
+            fz_matrix dest_ctm = page_transformation_matrix(dest_page);
+            fz_matrix idest_ctm = fz_invert_matrix(dest_ctm);
+            fz_point ipnt = fz_transform_point(pnt, dest_ictm);
+            annot_skel_goto1(txt, sizeof(txt), xref, xref, ipnt.x, ipnt.y, lnk.zoom, rect);
+        }
+    }
+}
+
+void pdf_add_links(pdf_document *document, const std::vector<fz_story_element_position>& positions)
+{
+    std::vector<std::string, fz_story_element_position*> id_to_position;
+    for (auto& position: positions)
+    {
+        if (position.open_close & 1 && position.id && position.id[0])
+        {
+            if (id_to_position.find(position.id) == id_to_position.end())
+            {
+                id_to_position[position.id] = &position;
+            }
+        }
+    }
+    /* Insert links for all positions that have an `href`. */
+    
+    for (auto& position_from: positions)
+    {
+        if (position_from.open_close & 1 && position_from.href)
+        {
+            std::string annot = getLinkText(page, linkinfo);
+        }
+    }
+}
+#endif
 
 %}
 
