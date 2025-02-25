@@ -467,6 +467,7 @@ def get_mupdf_internal(out, location=None, sha=None, local_tgz=None):
         return None, location
     
     local_dir = None
+    branch = None
     if local_tgz:
         assert os.path.isfile(local_tgz)
     elif location.startswith( 'git:'):
@@ -488,42 +489,40 @@ def get_mupdf_internal(out, location=None, sha=None, local_tgz=None):
         sha, comment, diff, branch = git_info(local_dir)
         if branch == 'master':
             # 2025-02-25: MuPDF build fails due to long link command.
-            log(f'Patching MuPDF because branch is master.')
-            patch = textwrap.dedent(
-                    '''
-                    diff --git a/Makefile b/Makefile
-                    index 35d5305ef..9231e7c06 100644
-                    --- a/Makefile
-                    +++ b/Makefile
-                    @@ -86,11 +86,22 @@ GENDEF_CMD = $(QUIET_GENDEF) gendef - $< > $@
-                     DLLTOOL_CMD = $(QUIET_DLLTOOL) dlltool -d $< -D $(notdir $(^:%.def=%.dll)) -l $@
+            if 0:
+                log(f'Patching MuPDF because branch is master.')
+                patch = textwrap.dedent(
+                        '''
+                        diff --git a/Makefile b/Makefile
+                        index 35d5305ef..e2edf27ba 100644
+                        --- a/Makefile
+                        +++ b/Makefile
+                        @@ -86,12 +86,23 @@ GENDEF_CMD = $(QUIET_GENDEF) gendef - $< > $@
+                         DLLTOOL_CMD = $(QUIET_DLLTOOL) dlltool -d $< -D $(notdir $(^:%.def=%.dll)) -l $@
 
-                     ifeq ($(shared),yes)
-                    +ifeq ($(OS),Linux)
-                    +LINK_CMD = \
-                    +       $(file >$@.args, \
-                    +               $(filter-out %.$(SO)$(SO_VERSION),$^) \
-                    +               $(sort $(patsubst %,-L%,$(dir $(filter %.$(SO)$(SO_VERSION),$^)))) \
-                    +               $(patsubst lib%.$(SO)$(SO_VERSION),-l%,$(notdir $(filter %.$(SO)$(SO_VERSION),$^))) \
-                    +               $(LIBS) \
-                    +               ) \
-                    +       $(QUIET_LINK) $(MKTGTDIR) ; $(CC) $(LDFLAGS) -o $@ @$@.args
-                    +else
-                     LINK_CMD = $(QUIET_LINK) $(MKTGTDIR) ; $(CC) $(LDFLAGS) -o $@ \
-                    -       $(filter-out %.$(SO)$(SO_VERSION),$^) \
-                    -       $(sort $(patsubst %,-L%,$(dir $(filter %.$(SO)$(SO_VERSION),$^)))) \
-                    -       $(patsubst lib%.$(SO)$(SO_VERSION),-l%,$(notdir $(filter %.$(SO)$(SO_VERSION),$^))) \
-                    -       $(LIBS)
-                    +   $(filter-out %.$(SO)$(SO_VERSION),$^) \
-                    +   $(sort $(patsubst %,-L%,$(dir $(filter %.$(SO)$(SO_VERSION),$^)))) \
-                    +   $(patsubst lib%.$(SO)$(SO_VERSION),-l%,$(notdir $(filter %.$(SO)$(SO_VERSION),$^))) \
-                    +   $(LIBS)
-                    +endif
-                     endif
+                         ifeq ($(shared),yes)
+                        +ifeq ($(OS),Linux)
+                        +LINK_CMD = \\
+                        +	$(file >$@.args, \\
+                        +		$(filter-out %.$(SO)$(SO_VERSION),$^) \\
+                        +		$(sort $(patsubst %,-L%,$(dir $(filter %.$(SO)$(SO_VERSION),$^)))) \\
+                        +		$(patsubst lib%.$(SO)$(SO_VERSION),-l%,$(notdir $(filter %.$(SO)$(SO_VERSION),$^))) \\
+                        +		$(LIBS) \\
+                        +		) \\
+                        +	$(QUIET_LINK) $(MKTGTDIR) ; $(CC) $(LDFLAGS) -o $@ @$@.args
+                        +else
+                         LINK_CMD = $(QUIET_LINK) $(MKTGTDIR) ; $(CC) $(LDFLAGS) -o $@ \\
+                     	    $(filter-out %.$(SO)$(SO_VERSION),$^) \\
+                     	    $(sort $(patsubst %,-L%,$(dir $(filter %.$(SO)$(SO_VERSION),$^)))) \\
+                     	    $(patsubst lib%.$(SO)$(SO_VERSION),-l%,$(notdir $(filter %.$(SO)$(SO_VERSION),$^))) \\
+                     	    $(LIBS)
+                         endif
+                        +endif
 
-                     # --- Rules ---
-                    ''')
-            git_patch(local_dir, patch)
+                         # --- Rules ---
+
+                        ''')
+                git_patch(local_dir, patch)
     elif '://' in location:
         # Download .tgz.
         local_tgz = os.path.basename( location)
@@ -629,6 +628,7 @@ def build():
     mupdf_local, mupdf_location = get_mupdf()
     if mupdf_local:
         mupdf_version_tuple = get_mupdf_version(mupdf_local)
+        sha, comment, diff, branch = git_info(mupdf_local)
     # else we cannot determine version this way and do not use it
 
     build_type = os.environ.get( 'PYMUPDF_SETUP_MUPDF_BUILD_TYPE', 'release')
@@ -939,6 +939,8 @@ def build_mupdf_unix(
         env_add(env, 'XCFLAGS', archflags)
         env_add(env, 'XLIBS', archflags)
 
+    mupdf_version_tuple = get_mupdf_version(mupdf_local)
+    
     # We specify a build directory path containing 'pymupdf' so that we
     # coexist with non-PyMuPDF builds (because PyMuPDF builds have a
     # different config.h).
@@ -951,7 +953,10 @@ def build_mupdf_unix(
     # $_PYTHON_HOST_PLATFORM allows cross-compiled cibuildwheel builds
     # to coexist, e.g. on github.
     #
-    build_prefix = f'PyMuPDF-'
+    if mupdf_version_tuple >= (1, 26):
+        build_prefix = ''   # While mupdf has link command length problems.
+    else:
+        build_prefix = f'PyMuPDF-'
     if pyodide:
         build_prefix += 'pyodide-'
     else:
@@ -968,7 +973,6 @@ def build_mupdf_unix(
         log(f'PYMUPDF_SETUP_MUPDF_TESSERACT=0 so building mupdf without tesseract.')
     else:
         build_prefix += 'tesseract-'
-    mupdf_version_tuple = get_mupdf_version(mupdf_local)
     if (
             linux
             and os.environ.get('PYMUPDF_SETUP_MUPDF_BSYMBOLIC', '1') == '1'
