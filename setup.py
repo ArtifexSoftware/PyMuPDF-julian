@@ -189,7 +189,6 @@ import stat
 import subprocess
 import sys
 import tarfile
-import tempfile
 import urllib.request
 import zipfile
 
@@ -467,7 +466,6 @@ def get_mupdf_internal(out, location=None, sha=None, local_tgz=None):
         return None, location
     
     local_dir = None
-    branch = None
     if local_tgz:
         assert os.path.isfile(local_tgz)
     elif location.startswith( 'git:'):
@@ -486,43 +484,6 @@ def get_mupdf_internal(out, location=None, sha=None, local_tgz=None):
         run( f'cd {local_dir} && git show --pretty=oneline|head -n 1', check=False)
         if sha:
             run( f'cd {local_dir} && git checkout {sha}')
-        sha, comment, diff, branch = git_info(local_dir)
-        if branch == 'master':
-            # 2025-02-25: MuPDF build fails due to long link command.
-            if 0:
-                log(f'Patching MuPDF because branch is master.')
-                patch = textwrap.dedent(
-                        '''
-                        diff --git a/Makefile b/Makefile
-                        index 35d5305ef..e2edf27ba 100644
-                        --- a/Makefile
-                        +++ b/Makefile
-                        @@ -86,12 +86,23 @@ GENDEF_CMD = $(QUIET_GENDEF) gendef - $< > $@
-                         DLLTOOL_CMD = $(QUIET_DLLTOOL) dlltool -d $< -D $(notdir $(^:%.def=%.dll)) -l $@
-
-                         ifeq ($(shared),yes)
-                        +ifeq ($(OS),Linux)
-                        +LINK_CMD = \\
-                        +	$(file >$@.args, \\
-                        +		$(filter-out %.$(SO)$(SO_VERSION),$^) \\
-                        +		$(sort $(patsubst %,-L%,$(dir $(filter %.$(SO)$(SO_VERSION),$^)))) \\
-                        +		$(patsubst lib%.$(SO)$(SO_VERSION),-l%,$(notdir $(filter %.$(SO)$(SO_VERSION),$^))) \\
-                        +		$(LIBS) \\
-                        +		) \\
-                        +	$(QUIET_LINK) $(MKTGTDIR) ; $(CC) $(LDFLAGS) -o $@ @$@.args
-                        +else
-                         LINK_CMD = $(QUIET_LINK) $(MKTGTDIR) ; $(CC) $(LDFLAGS) -o $@ \\
-                     	    $(filter-out %.$(SO)$(SO_VERSION),$^) \\
-                     	    $(sort $(patsubst %,-L%,$(dir $(filter %.$(SO)$(SO_VERSION),$^)))) \\
-                     	    $(patsubst lib%.$(SO)$(SO_VERSION),-l%,$(notdir $(filter %.$(SO)$(SO_VERSION),$^))) \\
-                     	    $(LIBS)
-                         endif
-                        +endif
-
-                         # --- Rules ---
-
-                        ''')
-                git_patch(local_dir, patch)
     elif '://' in location:
         # Download .tgz.
         local_tgz = os.path.basename( location)
@@ -628,7 +589,6 @@ def build():
     mupdf_local, mupdf_location = get_mupdf()
     if mupdf_local:
         mupdf_version_tuple = get_mupdf_version(mupdf_local)
-        sha, comment, diff, branch = git_info(mupdf_local)
     # else we cannot determine version this way and do not use it
 
     build_type = os.environ.get( 'PYMUPDF_SETUP_MUPDF_BUILD_TYPE', 'release')
