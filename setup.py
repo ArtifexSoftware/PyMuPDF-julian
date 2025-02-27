@@ -929,13 +929,6 @@ def build_mupdf_unix(
 
     mupdf_version_tuple = get_mupdf_version(mupdf_local)
     
-    e, getconf_ARG_MAX = pipcl.run('getconf ARG_MAX', capture=1, check=0)
-    if e == 0:
-        getconf_ARG_MAX = int(getconf_ARG_MAX.strip())
-    else:
-        getconf_ARG_MAX = None
-    log(f'{getconf_ARG_MAX=}')
-    
     # We specify a build directory path containing 'pymupdf' so that we
     # coexist with non-PyMuPDF builds (because PyMuPDF builds have a
     # different config.h).
@@ -948,10 +941,15 @@ def build_mupdf_unix(
     # $_PYTHON_HOST_PLATFORM allows cross-compiled cibuildwheel builds
     # to coexist, e.g. on github.
     #
+    # Have experimented with looking at getconf_ARG_MAX to decide whether to
+    # omit `PyMuPDF-` from the build directory, to avoid command-too-long
+    # errors with mupdf-1.26. But it seems that `getconf ARG_MAX` returns
+    # a system limit, not the actual limit of the current shell, and there
+    # doesn't seem to be a way to find the current shell's limit.
+    #
     build_prefix = f'PyMuPDF-'
-    if mupdf_version_tuple >= (1, 26) and getconf_ARG_MAX and getconf_ARG_MAX < 2**18:
+    if mupdf_version_tuple >= (1, 26):
         # Avoid link command length problems seen on musllinux.
-        log(f'Using shortened build_prefix because {getconf_ARG_MAX=}.')
         build_prefix = ''
     if pyodide:
         build_prefix += 'pyodide-'
