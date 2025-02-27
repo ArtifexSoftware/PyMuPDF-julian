@@ -930,6 +930,34 @@ def build_mupdf_unix(
 
     if openbsd or freebsd:
         env_add(env, 'CXX', 'c++', ' ')
+    
+    if darwin and os.environ.get('GITHUB_ACTIONS') == 'true':
+        if os.environ.get('ImageOS') == 'macos13':
+            # On Github macos13 we need to use Clang/LLVM (Homebrew) 15.0.7,
+            # otherwise mupdf:thirdparty/tesseract/src/api/baseapi.cpp fails to
+            # compile with:
+            #
+            #   thirdparty/tesseract/src/api/baseapi.cpp:150:25: error: 'recursive_directory_iterator' is unavailable: introduced in macOS 10.15
+            #
+            # See:
+            #   https://github.com/actions/runner-images/blob/main/images/macos/macos-13-Readme.md
+            #
+            log(f'Using llvm@15 clang and clang++')
+            cl15 = pipcl.run(f'brew --prefix llvm@15', capture=1)
+            log(f'{cl15=}')
+            cl15 = cl15.strip()
+            pipcl.run(f'ls -lL {cl15}')
+            pipcl.run(f'ls -lL {cl15}/bin')
+            cc = f'{cl15}/bin/clang'
+            cxx = f'{cl15}/bin/clang++'
+            env['CC'] = cc
+            env['CXX'] = cxx
+    
+    # Show compiler versions.
+    cc = env.get('CC', 'cc')
+    cxx = env.get('CXX', 'c++')
+    pipcl.run(f'{cc} --version')
+    pipcl.run(f'{cxx} --version')
 
     # Add extra flags for MacOS cross-compilation, where ARCHFLAGS can be
     # '-arch arm64'.
@@ -940,6 +968,13 @@ def build_mupdf_unix(
         env_add(env, 'XLIBS', archflags)
 
     mupdf_version_tuple = get_mupdf_version(mupdf_local)
+    
+    e, getconf_ARG_MAX = pipcl.run('getconf ARG_MAX', capture=1, check=0)
+    if e == 0:
+        getconf_ARG_MAX = int(getconf_ARG_MAX.strip())
+    else:
+        getconf_ARG_MAX = None
+    log(f'{getconf_ARG_MAX=}')
     
     # We specify a build directory path containing 'pymupdf' so that we
     # coexist with non-PyMuPDF builds (because PyMuPDF builds have a
@@ -953,10 +988,11 @@ def build_mupdf_unix(
     # $_PYTHON_HOST_PLATFORM allows cross-compiled cibuildwheel builds
     # to coexist, e.g. on github.
     #
-    if mupdf_version_tuple >= (1, 26):
-        build_prefix = ''   # While mupdf has link command length problems.
-    else:
-        build_prefix = f'PyMuPDF-'
+    build_prefix = f'PyMuPDF-'
+    if mupdf_version_tuple >= (1, 26) and getconf_ARG_MAX and getconf_ARG_MAX < 2**18
+        # Avoid link command length problems seen on musllinux.
+        log(f'Using shortend build_prefix because {getconf_ARG_MAX=}.')
+        build_prefix = ''
     if pyodide:
         build_prefix += 'pyodide-'
     else:
