@@ -989,7 +989,7 @@ def build_mupdf_unix(
     # to coexist, e.g. on github.
     #
     build_prefix = f'PyMuPDF-'
-    if mupdf_version_tuple >= (1, 26) and getconf_ARG_MAX and getconf_ARG_MAX < 2**18
+    if mupdf_version_tuple >= (1, 26) and getconf_ARG_MAX and getconf_ARG_MAX < 2**18:
         # Avoid link command length problems seen on musllinux.
         log(f'Using shortend build_prefix because {getconf_ARG_MAX=}.')
         build_prefix = ''
