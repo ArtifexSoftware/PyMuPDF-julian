@@ -12068,18 +12068,40 @@ class Story:
 
     def element_positions( self, function, args=None):
         '''
-        Trigger a callback function to record where items have been placed.
+        Trigger a callback function to be called typically multiple times with
+        information about where items have been placed.
+        
+        Args:
+            function:
+                The function to call; should take a single arg with these
+                attributes:
+                    depth
+                    depth
+                    heading
+                    id
+                    rect
+                    text
+                    open_close
+                    rect_num
+                    href
+            args:
+                None, or a dict with additional key=value attributes to include
+                in the arg passed in each call of <function>. Keys must be
+                strings satisfying str.isidentifer().
         '''
-        if type(args) is dict:
+        if args:
+            assert isinstance(args, dict)
             for k in args.keys():
-                if not (type(k) is str and k.isidentifier()):
-                    raise ValueError(f"invalid key '{k}'")
+                if not k.isidentifier():
+                    raise ValueError(f"invalid {k=}")
         else:
             args = {}
         if not callable(function) or function.__code__.co_argcount != 1:
             raise ValueError("callback 'function' must be a callable with exactly one argument")
         
         def function2( position):
+            assert isinstance(position, mupdf.FzStoryElementPosition)
+            # Create copy to which we will add itms in <args>.
             class Position2:
                 pass
             position2 = Position2()
@@ -12119,6 +12141,7 @@ class Story:
                 page_num += 1
             more, filled = self.place( rect)
             if positionfn:
+                # Add a `.page_num` member to the `ElementPosition`.
                 def positionfn2(position):
                     # We add a `.page_num` member to the
                     # `ElementPosition` instance.
