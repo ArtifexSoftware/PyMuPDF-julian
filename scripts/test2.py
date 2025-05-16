@@ -20,7 +20,7 @@ Example commands:
         -B debug -b -P valgrind -t
     
     Build wheel with cibuildwheel:
-        -e -W
+        -W
     
 Args:
 
@@ -39,7 +39,7 @@ Args:
         Read next arg(s) from environmental variable <env_name>. Does nothing
         if <env_name> is not set.
     -p <pytest_args>
-        Extra pytest args, for example `-k <testname>`.
+        Extra pytest args, for example `-p '-k <testname>'`.
     -P <pytest_wrap>
         Run pytest under a wrapper command, one of:
             gdb
@@ -50,7 +50,9 @@ Args:
         to stdout. This is to allow automated running on remote machines.
     -t
         Run pytest tests.
-    
+    --venv 0|1
+        Must be first args; if 1 (the default) we re-run outselves inside a
+        venv if we are not already in a venv.
     --vs-upgrade 0|1
         Equivalent to `-e PYMUPDF_SETUP_MUPDF_VS_UPGRADE=0|1`.
         
@@ -58,7 +60,8 @@ Args:
     -w
         Build wheel in directory `wheelhouse` and install.
     -W
-        Build wheel(s) using cibuildwheel in directory `wheelhouse`.
+        Build and test wheel(s) using cibuildwheel. Wheels are placed in
+        directory `wheelhouse`.
         
         If CIBW_ARCHS is unset we set $CIBW_ARCHS_WINDOWS, $CIBW_ARCHS_MACOS
         and $CIBW_ARCHS_LINUX to auto64 if they are unset.
@@ -118,7 +121,7 @@ def venv_ensure(args=None, path='venv-pymupdf'):
     if args is None:
         args = sys.argv
     if not venv_in(path):
-        if os.path.exists(path):
+        if 0 and os.path.exists(path):
             pass
         else:
             run(f'{sys.executable} -m venv {path}')
@@ -170,18 +173,21 @@ def test_packages():
 
 def main():
 
-    venv_ensure_local_done = [0]
-    def venv_ensure_local():
-        if not venv_ensure_local_done[0]:
-            venv_ensure_local_done[0] = 1
-            venv_ensure()
-
+    # Create/enter hard-coded venv if not already in.
+    #
+    if sys.argv[1:2][0] in ('-h', '--help', '--sync-paths'):
+        pass
+    elif sys.argv[1:3] == ['--venv', '0']:
+        pass
+    else:
+        venv_ensure()
+    
     build_type = None
     env_extra = dict()
+    install_packages = True
     pytest_args = None
     pytest_wrap = None
     sync_paths = False
-    install_packages = True
     
     args = iter(sys.argv[1:])
     while 1:
@@ -195,9 +201,9 @@ def main():
             return
         
         elif arg == '-b':
-            if not sync_paths:
-                venv_ensure_local()
-                run(f'pip install -v ./{g_root_dir}', env_extra=env_extra)
+            if sync_paths:
+                continue
+            run(f'pip install -v ./{g_root_dir}', env_extra=env_extra)
         
         elif arg == '-B':
             build_type = next(args)
@@ -207,18 +213,18 @@ def main():
             n, v = next(args).split('=', 1)
             env_extra[n] = v
         
+        elif arg == '-E':
+            env_name = next(args)
+            env_value = os.environ.get(env_name, '')
+            args = shlex.split(env_value) + list(args)
+            args = iter(args)
+        
         elif arg == '-m':
             mupdf_dir = next(args)
             env_extra['PYMUPDF_SETUP_MUPDF_BUILD'] = os.path.abspath(mupdf_dir)
             if sync_paths:
                 if not mupdf_dir.startswith('git:'):
                     print(mupdf_dir)
-        
-        elif arg == '-E':
-            env_name = next(args)
-            env_value = os.environ.get(env_name, '')
-            args = shlex.split(env_value) + list(args)
-            args = iter(args)
         
         elif arg == '-p':
             pytest_args = next(args)
@@ -235,135 +241,141 @@ def main():
         
         elif arg == '-t':
             # Test.
-            if not sync_paths:
-                venv_ensure_local()
-                run(f'pip install --upgrade pytest')
-                run(f'pip install --upgrade {test_packages()}')
-                if install_packages and pytest_wrap in ('valgrind', 'helgrind'):
-                    if platform.system() == 'Linux':
-                        run(f'sudo apt update')
-                        run(f'sudo apt install valgrind')
-                command = ''
-                if pytest_wrap is None:
-                    pass
-                elif pytest_wrap == 'gdb':
-                    command = 'gdb --args'
-                elif pytest_wrap == 'valgrind':
-                    env_extra['PYMUPDF_RUNNING_ON_VALGRIND'] = '1'
-                    env_extra['PYTHONMALLOC'] = 'malloc'
-                    command = (
-                            f'valgrind'
-                            f' --suppressions={g_root_dir}/valgrind.supp'
-                            f' --trace-children=yes'
-                            f' --num-callers=20'
-                            f' --error-exitcode=100'
-                            f' --errors-for-leak-kinds=none'
-                            f' --fullpath-after='
-                            )
-                elif pytest_wrap == 'helgrind':
-                    env_extra['PYMUPDF_RUNNING_ON_VALGRIND'] = '1'
-                    env_extra['PYTHONMALLOC'] = 'malloc'
-                    command = (
-                            f'valgrind'
-                            f' --tool=helgrind'
-                            f' --trace-children=yes'
-                            f' --num-callers=20'
-                            f' --error-exitcode=100'
-                            f' --fullpath-after='
-                            )
-                elif pytest_wrap == 'gdb':
-                    command = 'gdb --args'
-                else:
-                    assert 0, f'Unrecognised {pytest_wrap=}'
-            
-                command += f' {relpath(sys.executable)} -m pytest'
-                if pytest_args:
-                    command += f' {pytest_args}'
-                if pytest_wrap in ('valgrind', 'helgrind'):
-                    # Show all output even if tests pass.
-                    command += f' -s'
-                if pytest_args:
-                    command += f' {pytest_args}'
-                else:
-                    command += f' {g_root_dir}'
-                run(command, env_extra=env_extra)
+            if sync_paths:
+                continue
+            run(f'pip install --upgrade pytest')
+            run(f'pip install --upgrade {test_packages()}')
+            if install_packages and pytest_wrap in ('valgrind', 'helgrind'):
+                if platform.system() == 'Linux':
+                    run(f'sudo apt update')
+                    run(f'sudo apt install valgrind')
+            command = ''
+            if pytest_wrap is None:
+                pass
+            elif pytest_wrap == 'gdb':
+                command = 'gdb --args'
+            elif pytest_wrap == 'valgrind':
+                env_extra['PYMUPDF_RUNNING_ON_VALGRIND'] = '1'
+                env_extra['PYTHONMALLOC'] = 'malloc'
+                command = (
+                        f'valgrind'
+                        f' --suppressions={g_root_dir}/valgrind.supp'
+                        f' --trace-children=yes'
+                        f' --num-callers=20'
+                        f' --error-exitcode=100'
+                        f' --errors-for-leak-kinds=none'
+                        f' --fullpath-after='
+                        )
+            elif pytest_wrap == 'helgrind':
+                env_extra['PYMUPDF_RUNNING_ON_VALGRIND'] = '1'
+                env_extra['PYTHONMALLOC'] = 'malloc'
+                command = (
+                        f'valgrind'
+                        f' --tool=helgrind'
+                        f' --trace-children=yes'
+                        f' --num-callers=20'
+                        f' --error-exitcode=100'
+                        f' --fullpath-after='
+                        )
+            elif pytest_wrap == 'gdb':
+                command = 'gdb --args'
+            else:
+                assert 0, f'Unrecognised {pytest_wrap=}'
+
+            command += f' {relpath(sys.executable)} -m pytest'
+            if pytest_wrap in ('valgrind', 'helgrind'):
+                # Show all output even if tests pass.
+                command += f' -s'
+            if pytest_args:
+                command += f' {pytest_args}'
+            command += f' {g_root_dir}'
+            run(command, env_extra=env_extra)
                 
         elif arg == '--vs-upgrade':
             env_extra['PYMUPDF_SETUP_MUPDF_VS_UPGRADE'] = next(args)
         
+        elif arg == '--venv':
+            use_venv = int(next(args)) 
+        
         elif arg == '-w':
             # Build and install wheel.
-            if not sync_paths:
-                venv_ensure_local()
-                newer_files = NewerFiles('wheelhouse/*.whl')
-                run(f'pip wheel -w wheelhouse -v {g_root_dir}', env_extra=env_extra)
-                wheel = newer_files.get_one()
-                run(f'pip install {wheel}')
+            if sync_paths:
+                continue
+            newer_files = NewerFiles('wheelhouse/*.whl')
+            run(f'pip wheel -w wheelhouse -v {g_root_dir}', env_extra=env_extra)
+            wheel = newer_files.get_one()
+            run(f'pip install {wheel}')
         
         elif arg == '-W':
             # Build wheel(s) with cibuildwheel.
-            if not sync_paths:
-                # Build wheel(s) with cibuildwheel.
-                run(f'pip install --upgrade cibuildwheel')
+            if sync_paths:
+                continue
+            # Build wheel(s) with cibuildwheel.
+            #venv_ensure_local()
+            run(f'pip install --upgrade cibuildwheel')
 
-                # Need to get sot checkout here because (on linux at least) there
-                # is no `ssh` command available inside cibuildwheel's docker. And
-                # we put the sot checkout within PyMuPDF/ so that it is available
-                # inside the docker.
-                #
-                # Some general flags.
-                env_extra['CIBW_BUILD_VERBOSITY'] = '1'
-                env_extra['CIBW_SKIP'] = 'pp* *i686 cp36* cp37* *musllinux* *-win32 *-aarch64'
+            # Need to get sot checkout here because (on linux at least) there
+            # is no `ssh` command available inside cibuildwheel's docker. And
+            # we put the sot checkout within PyMuPDF/ so that it is available
+            # inside the docker.
+            #
+            # Some general flags.
+            env_extra['CIBW_BUILD_VERBOSITY'] = '1'
+            env_extra['CIBW_SKIP'] = 'pp* *i686 cp36* cp37* *musllinux* *-win32 *-aarch64'
 
-                # Set what wheels to build, if not already specified.
-                if os.environ.get('CIBW_ARCHS') is None:
-                    if os.environ.get('CIBW_ARCHS_WINDOWS') is None:
-                        env_extra['CIBW_ARCHS_WINDOWS'] = 'auto64'
+            # Set what wheels to build, if not already specified.
+            if os.environ.get('CIBW_ARCHS') is None:
+                if os.environ.get('CIBW_ARCHS_WINDOWS') is None:
+                    env_extra['CIBW_ARCHS_WINDOWS'] = 'auto64'
 
-                    if os.environ.get('CIBW_ARCHS_MACOS') is None:
-                        env_extra['CIBW_ARCHS_MACOS'] = 'auto64'
+                if os.environ.get('CIBW_ARCHS_MACOS') is None:
+                    env_extra['CIBW_ARCHS_MACOS'] = 'auto64'
 
-                    if os.environ.get('CIBW_ARCHS_LINUX') is None:
-                        env_extra['CIBW_ARCHS_LINUX'] = 'auto64'
-                        if os.environ.get('GITHUB_ACTIONS') == 'true':
-                            # Special case to use emulation/cross-compilation of
-                            # aarch64 on Linux.
-                            env_extra['CIBW_ARCHS_LINUX'] += ' aarch64'
+                if os.environ.get('CIBW_ARCHS_LINUX') is None:
+                    env_extra['CIBW_ARCHS_LINUX'] = 'auto64'
+                    if os.environ.get('GITHUB_ACTIONS') == 'true':
+                        # Special case to use emulation/cross-compilation of
+                        # aarch64 on Linux.
+                        env_extra['CIBW_ARCHS_LINUX'] += ' aarch64'
 
-                # Tell cibuildwheel not to use `auditwheel` on Linux and MacOS,
-                # because it cannot cope with us deliberately having required
-                # libraries in different wheel - specifically in the PyMuPDF wheel.
-                #
-                # We cannot use a subset of auditwheel's functionality
-                # with `auditwheel addtag` because it says `No tags
-                # to be added` and terminates with non-zero. See:
-                # https://github.com/pypa/auditwheel/issues/439.
-                #
-                env_extra['CIBW_REPAIR_WHEEL_COMMAND_LINUX'] = ''
-                env_extra['CIBW_REPAIR_WHEEL_COMMAND_MACOS'] = ''
+            # Tell cibuildwheel not to use `auditwheel` on Linux and MacOS,
+            # because it cannot cope with us deliberately having required
+            # libraries in different wheel - specifically in the PyMuPDF wheel.
+            #
+            # We cannot use a subset of auditwheel's functionality
+            # with `auditwheel addtag` because it says `No tags
+            # to be added` and terminates with non-zero. See:
+            # https://github.com/pypa/auditwheel/issues/439.
+            #
+            env_extra['CIBW_REPAIR_WHEEL_COMMAND_LINUX'] = ''
+            env_extra['CIBW_REPAIR_WHEEL_COMMAND_MACOS'] = ''
 
-                # Tell cibuildwheel how to test.
-                env_extra['CIBW_TEST_COMMAND'] = f'python {{project}}/scripts/test2.py -t'
+            # Tell cibuildwheel how to test.
+            env_extra['CIBW_TEST_COMMAND'] = f'python {{project}}/scripts/test2.py -t'
 
-                # Specify python versions.
-                CIBW_BUILD = os.environ.get('CIBW_BUILD', 'cp39 cp310 cp311 cp312 cp313')
+            # Specify python versions.
+            if os.environ.get('GITHUB_ACTIONS') == 'true':
+                CIBW_BUILD = os.environ.get('CIBW_BUILD', 'cp39* cp310* cp311* cp312* cp313*')
+            else:
+                v = platform.python_version_tuple()[:2]
+                CIBW_BUILD = f'cp{"".join(v)}*'
 
-                # Build for lowest (assumed first) Python version. Our second
-                # invocation of cibuildwheel will then use this wheel instead of
-                # building a wheel, and test with all Python versions.
-                #
-                log(f'py_limited_api: building for first Python version.')
-                env_extra['CIBW_BUILD'] = CIBW_BUILD.split()[0]
-                run(f'cd {g_root_dir} && cibuildwheel', env_extra=env_extra)
+            # Build for lowest (assumed first) Python version. Our second
+            # invocation of cibuildwheel will then use this wheel instead of
+            # building a wheel, and test with all Python versions.
+            #
+            log(f'py_limited_api: building for first Python version.')
+            env_extra['CIBW_BUILD'] = CIBW_BUILD.split()[0]
+            run(f'cd {g_root_dir} && cibuildwheel', env_extra=env_extra)
 
-                # cibuildwheel automatically notices that first wheel built
-                # supports later versions of Python so will build only for first
-                # (lowest) Python and test it on all Python versions.
-                #
-                env_extra['CIBW_BUILD'] = CIBW_BUILD
-                log(f'py_limited_api: building/testing for all Python versions {CIBW_BUILD=}.')
-                run(f'cd {g_root_dir} && cibuildwheel', env_extra=env_extra)
-                run(f'ls -ld {g_root_dir}/wheelhouse/*')
+            # cibuildwheel automatically notices that first wheel built
+            # supports later versions of Python so will build only for first
+            # (lowest) Python and test it on all Python versions.
+            #
+            env_extra['CIBW_BUILD'] = CIBW_BUILD
+            log(f'py_limited_api: building/testing for all Python versions {CIBW_BUILD=}.')
+            run(f'cd {g_root_dir} && cibuildwheel', env_extra=env_extra)
+            run(f'ls -ld {g_root_dir}/wheelhouse/*')
         
         else:
             assert 0, f'Unrecognised {arg=}'

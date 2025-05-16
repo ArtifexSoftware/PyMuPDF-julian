@@ -221,17 +221,26 @@ def run(command, check=1):
 if 1:
     # For debugging.
     log(f'### Starting.')
-    log(f'__name__: {__name__!r}')
-    log(f'platform.platform(): {platform.platform()!r}')
-    log(f'platform.python_version(): {platform.python_version()!r}')
-    log(f'sys.executable: {sys.executable!r}')
+    
+    log(f'{__file__=}')
+    log(f'{__name__=}')
+    log(f'{os.getcwd()=}')
+    log(f'{platform.machine()=}')
+    log(f'{platform.platform()=}')
+    log(f'{platform.python_version()=}')
+    log(f'{platform.system()=}')
+    log(f'{platform.uname()=}')
+    log(f'{sys.executable=}')
+    log(f'{sys.version=}')
+    log(f'{sys.version_info=}')
+    log(f'{list(sys.version_info)=}')
+    
     log(f'CPU bits: {32 if sys.maxsize == 2**31 - 1 else 64} {sys.maxsize=}')
-    log(f'__file__: {__file__!r}')
-    log(f'os.getcwd(): {os.getcwd()!r}')
     log(f'getconf ARG_MAX: {pipcl.run("getconf ARG_MAX", capture=1, check=0, verbose=0)!r}')
-    log(f'sys.argv ({len(sys.argv)}):')
+    
     for i, arg in enumerate(sys.argv):
         log(f'    {i}: {arg!r}')
+    
     log(f'os.environ ({len(os.environ)}):')
     for k in sorted( os.environ.keys()):
         v = os.environ[ k]
@@ -802,6 +811,8 @@ def build_mupdf_windows(
     #log( f'Building mupdf.')
     devenv = os.environ.get('PYMUPDF_SETUP_DEVENV')
     if not devenv:
+        if 1:
+            pipcl.wdev.windows_vs_multiple(verbose=1)
         vs = pipcl.wdev.WindowsVS()
         devenv = vs.devenv
     if not devenv:

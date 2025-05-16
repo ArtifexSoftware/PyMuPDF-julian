@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       
-      flavours:
-        description: 'If set, we build separate PyMuPDF and PyMuPDFb wheels.'
-        type: boolean
-        default: true
+      #flavours:
+      #  description: 'If set, we build separate PyMuPDF and PyMuPDFb wheels.'
+      #  type: boolean
+      #  default: true
       
       sdist:
         type: boolean
@@ -28,6 +28,10 @@ on:
       wheels_windows_auto:
         type: boolean
         default: true
+        
+      wheels_windows_arm64:
+        type: boolean
+        default: false
         
       wheels_macos_auto:
         type: boolean
@@ -67,7 +71,6 @@ jobs:
       env:
             inputs_wheels_default: 0
             inputs_sdist: 1
-            inputs_flavours: ${{inputs.flavours}}
             inputs_PYMUPDF_SETUP_MUPDF_BUILD: ${{inputs.PYMUPDF_SETUP_MUPDF_BUILD}}
       run:
         python scripts/gh_release.py
@@ -85,7 +88,7 @@ jobs:
     strategy:
       matrix:
         # 2024-05-08: Need to specify macos-13/14 to get x86_64/arm64.
-        os: [ubuntu-latest, windows-2019, macos-13, macos-14]
+        os: [ubuntu-latest, windows-2019, macos-13, macos-14, windows-11-arm]
 
       # Avoid cancelling of all cibuildwheel runs after a single failure.
       fail-fast: false
@@ -133,7 +136,6 @@ jobs:
         # https://github.com/orgs/community/discussions/27088
         #
         env:
-            inputs_flavours: ${{inputs.flavours}}
             inputs_sdist: ${{inputs.sdist}}
             
             inputs_wheels_linux_aarch64: ${{inputs.wheels_linux_aarch64}}
@@ -142,6 +144,7 @@ jobs:
             #inputs_wheels_macos_arm64: ${{inputs.wheels_macos_arm64}}
             inputs_wheels_macos_auto: ${{inputs.wheels_macos_auto}}
             inputs_wheels_windows_auto: ${{inputs.wheels_windows_auto}}
+            inputs_wheels_windows_arm64: ${{inputs.wheels_windows_arm64}}
             
             inputs_PYMUPDF_SETUP_MUPDF_BUILD: ${{inputs.PYMUPDF_SETUP_MUPDF_BUILD}}
             #inputs_PYMUPDF_SETUP_MUPDF_BUILD_TYPE: ${{inputs.PYMUPDF_SETUP_MUPDF_BUILD_TYPE}}

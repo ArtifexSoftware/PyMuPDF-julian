@@ -195,7 +195,7 @@ def build( platform_=None, valgrind=False):
             return default
         else:
             assert 0, f'Bad environ {name=} {v=}'
-    inputs_flavours = get_bool('inputs_flavours', 1)
+    inputs_flavours = get_bool('inputs_flavours', 0)
     inputs_sdist = get_bool('inputs_sdist')
     inputs_skeleton = os.environ.get('inputs_skeleton')
     inputs_wheels_default = get_bool('inputs_wheels_default', 1)
@@ -205,6 +205,7 @@ def build( platform_=None, valgrind=False):
     inputs_wheels_macos_arm64 = get_bool('inputs_wheels_macos_arm64', 0)
     inputs_wheels_macos_auto = get_bool('inputs_wheels_macos_auto', inputs_wheels_default)
     inputs_wheels_windows_auto = get_bool('inputs_wheels_windows_auto', inputs_wheels_default)
+    inputs_wheels_windows_arm64 = get_bool('inputs_wheels_windows_arm64', inputs_wheels_default)
     inputs_wheels_cps = os.environ.get('inputs_wheels_cps')
     inputs_PYMUPDF_SETUP_MUPDF_BUILD = os.environ.get('inputs_PYMUPDF_SETUP_MUPDF_BUILD')
     inputs_PYMUPDF_SETUP_MUPDF_BUILD_TYPE = os.environ.get('inputs_PYMUPDF_SETUP_MUPDF_BUILD_TYPE')
@@ -221,6 +222,7 @@ def build( platform_=None, valgrind=False):
     log( f'{inputs_wheels_macos_arm64=}')
     log( f'{inputs_wheels_macos_auto=}')
     log( f'{inputs_wheels_windows_auto=}')
+    log( f'{inputs_wheels_windows_arm64=}')
     log( f'{inputs_wheels_cps=}')
     log( f'{inputs_PYMUPDF_SETUP_MUPDF_BUILD=}')
     log( f'{inputs_PYMUPDF_SETUP_MUPDF_BUILD_TYPE=}')
@@ -262,6 +264,7 @@ def build( platform_=None, valgrind=False):
             or inputs_wheels_macos_arm64
             or inputs_wheels_macos_auto
             or inputs_wheels_windows_auto
+            or inputs_wheels_windows_arm64
             ):
         env_extra = dict()
     
@@ -317,12 +320,22 @@ def build( platform_=None, valgrind=False):
                 return
     
         if platform.system() == 'Windows':
-            set_if_unset(
-                    'CIBW_ARCHS_WINDOWS',
-                    make_string(
-                        'auto' * inputs_wheels_windows_auto,
-                        ),
-                    )
+            if platform.machine() == 'AMD64':
+                set_if_unset(
+                        'CIBW_ARCHS_WINDOWS',
+                        make_string(
+                            'auto' * inputs_wheels_windows_auto,
+                            ),
+                        )
+            elif platform.machine() == 'ARM64':
+                set_if_unset(
+                        'CIBW_ARCHS_WINDOWS',
+                        make_string(
+                            'ARM64' * inputs_wheels_windows_arm64,
+                            ),
+                        )
+            else:
+                log(f'Unrecognised {platform.machine()=}')
             if env_extra.get('CIBW_ARCHS_WINDOWS') == '':
                 log(f'Not running cibuildwheel because CIBW_ARCHS_WINDOWS is empty string.')
                 return
