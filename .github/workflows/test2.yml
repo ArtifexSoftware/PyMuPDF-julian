@@ -1,13 +1,14 @@
 name: Test2
 
 on:
-  schedule:
-    - cron: '47 4 * * *'
-  pull_request:
-    branches: [main]
+  #schedule:
+  #  - cron: '47 4 * * *'
+  #pull_request:
+  #  branches: [main]
   workflow_dispatch:
     inputs:
       args:
+        type: string
         default: ''
         description: 'Arguments to pass to scripts/test2.py'
 
@@ -42,7 +43,7 @@ jobs:
       
       - name: test
         env:
-          PYMUPDF_test2_args: {{inputs.args}}
+          PYMUPDF_test2_args: ${{inputs.args}}
         run:
           python scripts/test2.py -E PYMUPDF_test2_args
       
