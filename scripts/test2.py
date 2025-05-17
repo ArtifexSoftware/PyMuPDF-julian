@@ -38,6 +38,11 @@ Args:
     -E <env_name>
         Read next arg(s) from environmental variable <env_name>. Does nothing
         if <env_name> is not set.
+    -m <mupdf>
+        Specify mupdf, sets PYMUPDF_SETUP_MUPDF_BUILD.
+    -o <os-names>
+        Only run if platform.system() is in comma-separated list <os-names>, or
+        <os-names> is empty.
     -p <pytest_args>
         Extra pytest args, for example `-p '-k <testname>'`.
     -P <pytest_wrap>
@@ -78,7 +83,6 @@ import shlex
 import subprocess
 import sys
 
-
 def relpath(path, start=None):
     try:
         return os.path.relpath(path, start)
@@ -100,6 +104,36 @@ log = pipcl.log0
 run = pipcl.run
 
 
+if 1:
+    # For debugging.
+    log(f'### Starting.')
+    
+    log(f'{__file__=}')
+    log(f'{__name__=}')
+    log(f'{os.getcwd()=}')
+    log(f'{platform.machine()=}')
+    log(f'{platform.platform()=}')
+    log(f'{platform.python_version()=}')
+    log(f'{platform.system()=}')
+    log(f'{platform.uname()=}')
+    log(f'{sys.executable=}')
+    log(f'{sys.version=}')
+    log(f'{sys.version_info=}')
+    log(f'{list(sys.version_info)=}')
+    
+    log(f'CPU bits: {32 if sys.maxsize == 2**31 - 1 else 64} {sys.maxsize=}')
+    log(f'getconf ARG_MAX: {pipcl.run("getconf ARG_MAX", capture=1, check=0, verbose=0)!r}')
+    
+    log(f'sys.argv ({len(sys.argv)}):')
+    for i, arg in enumerate(sys.argv):
+        log(f'    {i}: {arg!r}')
+    
+    log(f'os.environ ({len(os.environ)}):')
+    for k in sorted( os.environ.keys()):
+        v = os.environ[ k]
+        log( f'    {k}: {v!r}')
+
+    
 def venv_in(path=None):
     '''
     If path is None, returns true if we are in a venv. Otherwise returns true
@@ -124,16 +158,19 @@ def venv_ensure(args=None, path='venv-pymupdf'):
         if 0 and os.path.exists(path):
             pass
         else:
+            log(f'{sys.executable=}')
             run(f'{sys.executable} -m venv {path}')
         # Would like to use os.execv() here, but on non-Windows i think this
         # would need us to know what the shell is.
         if platform.system() == 'Windows':
-            command = f'{path}/Scripts/activate'
+            command = f'{path}\\Scripts\\activate'
         else:
             command = f'. {path}/bin/activate'
         command += f' && python {shlex.join(args)}'
-        cp = subprocess.run(command, shell=1, check=0)
-        sys.exit(cp.returncode)
+        e = run(command, check=0)
+        sys.exit(e)
+        #cp = subprocess.run(command, shell=1, check=0)
+        #sys.exit(cp.returncode)
 
 
 class NewFiles:
@@ -220,11 +257,19 @@ def main():
             args = iter(args)
         
         elif arg == '-m':
-            mupdf_dir = next(args)
-            env_extra['PYMUPDF_SETUP_MUPDF_BUILD'] = os.path.abspath(mupdf_dir)
-            if sync_paths:
-                if not mupdf_dir.startswith('git:'):
-                    print(mupdf_dir)
+            mupdf = next(args)
+            if not mupdf.startswith('git:'):
+                mupdf = os.path.abspath(mupdf)
+                if sync_paths:
+                    print(mupdf)
+            env_extra['PYMUPDF_SETUP_MUPDF_BUILD'] = mupdf
+        
+        elif arg == '-o':
+            os_names = next(args)
+            if os_names and not sync_paths:
+                if platform.system().lower() not in os_names.split(','):
+                    log(f'Not running because {platform.system().lower()=} not in {os_names=}')
+                    return
         
         elif arg == '-p':
             pytest_args = next(args)
@@ -291,11 +336,11 @@ def main():
             command += f' {g_root_dir}'
             run(command, env_extra=env_extra)
                 
-        elif arg == '--vs-upgrade':
-            env_extra['PYMUPDF_SETUP_MUPDF_VS_UPGRADE'] = next(args)
-        
         elif arg == '--venv':
             use_venv = int(next(args)) 
+        
+        elif arg == '--vs-upgrade':
+            env_extra['PYMUPDF_SETUP_MUPDF_VS_UPGRADE'] = next(args)
         
         elif arg == '-w':
             # Build and install wheel.
