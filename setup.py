@@ -238,6 +238,7 @@ if 1:
     log(f'CPU bits: {32 if sys.maxsize == 2**31 - 1 else 64} {sys.maxsize=}')
     log(f'getconf ARG_MAX: {pipcl.run("getconf ARG_MAX", capture=1, check=0, verbose=0)!r}')
     
+    log(f'sys.argv ({len(sys.argv)}):')
     for i, arg in enumerate(sys.argv):
         log(f'    {i}: {arg!r}')
     
