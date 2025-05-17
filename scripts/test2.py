@@ -56,7 +56,7 @@ Args:
     -t
         Run pytest tests.
     --venv 0|1
-        Must be first args; if 1 (the default) we re-run outselves inside a
+        Must be first args; if 1 (the default) we re-run ourselves inside a
         venv if we are not already in a venv.
     --vs-upgrade 0|1
         Equivalent to `-e PYMUPDF_SETUP_MUPDF_VS_UPGRADE=0|1`.
