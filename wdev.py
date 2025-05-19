@@ -13,6 +13,7 @@ import textwrap
 
 import pipcl
 
+
 class WindowsVS:
     r'''
     Windows only. Finds locations of Visual Studio command-line tools. Assumes
@@ -33,7 +34,7 @@ class WindowsVS:
 
     `.csc` is C# compiler; will be None if not found.
     '''
-    def __init__( self, year=None, grade=None, version=None, cpu=None, verbose=False):
+    def __init__( self, year=None, grade=None, version=None, cpu=None, verbose=False, directory=None):
         '''
         Args:
             year:
@@ -68,16 +69,17 @@ class WindowsVS:
             if not cpu:
                 cpu = WindowsCpu()
 
-            # Find `directory`.
-            #
-            pattern = f'C:\\Program Files*\\Microsoft Visual Studio\\{year if year else "2*"}\\{grade if grade else "*"}'
-            directories = glob.glob( pattern)
-            if verbose:
-                _log( f'Matches for: {pattern=}')
-                _log( f'{directories=}')
-            assert directories, f'No match found for: {pattern}'
-            directories.sort()
-            directory = directories[-1]
+            if not directory:
+                # Find `directory`.
+                #
+                pattern = _vs_pattern(year, grade)
+                directories = glob.glob( pattern)
+                if verbose:
+                    _log( f'Matches for: {pattern=}')
+                    _log( f'{directories=}')
+                assert directories, f'No match found for: {pattern}'
+                directories.sort()
+                directory = directories[-1]
 
             # Find `devenv`.
             #
@@ -189,7 +191,40 @@ class WindowsVS:
         return textwrap.indent( ret, indent)
 
     def __repr__( self):
-        return ' '.join( self._description())
+        items = list()
+        for name in (
+                'year',
+                'grade',
+                'version',
+                'directory',
+                'vcvars',
+                'cl',
+                'link',
+                'csc',
+                'msbuild',
+                'devenv',
+                'cpu',
+                ):
+            items.append(f'{name}={getattr(self, name)!r}')
+        return ' '.join(items)
+
+
+def _vs_pattern(year=None, grade=None):
+    return f'C:\\Program Files*\\Microsoft Visual Studio\\{year if year else "2*"}\\{grade if grade else "*"}'
+
+
+def windows_vs_multiple(year=None, grade=None, verbose=0):
+    '''
+    Returns list of WindowsVS instances.
+    '''
+    ret = list()
+    directories = glob.glob(_vs_pattern(year, grade))
+    for directory in directories:
+        vs = WindowsVS(directory=directory)
+        if verbose:
+            _log(vs.description_ml())
+        ret.append(vs)
+    return ret
 
 
 class WindowsCpu:
