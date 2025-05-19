@@ -1951,9 +1951,13 @@ def run(
         env = os.environ.copy()
         env.update(env_extra)
     lines = _command_lines( command)
-    nl = '\n'
     if verbose:
-        log1( f'Running: {nl.join(lines)}', caller=caller+1)
+        text = f'Running'
+        if env_extra:
+            text += f' with {env_extra=}'
+        nl = '\n'
+        text += f': {nl.join(lines)}'
+        log1(text, caller=caller+1)
     sep = ' ' if windows() else ' \\\n'
     command2 = sep.join( lines)
     cp = subprocess.run(
