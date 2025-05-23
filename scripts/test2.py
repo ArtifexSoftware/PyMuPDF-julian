@@ -198,38 +198,45 @@ def main():
     pytest_wrap = None
     sync_paths = False
     
-    args = sys.argv[1:]
+    argv = sys.argv[1:]
     
     # Handle any initial --sync-paths and --venv args.
     #
-    if len(args) >= 1 and args[0] == '--sync-paths':
+    if len(argv) >= 1 and argv[0] == '--sync-paths':
         # Don't call pipcl.show_system(), don't run ourselves inside a venv,
         # don't run any builds or tests. We only output required files,
         # directories and git checkouts.
         sync_paths = True
-        args = args[1:]
+        argv = argv[1:]
         print(g_root_dir)
     else:
         # Create/enter hard-coded venv if not already in a venv.
         use_venv = True
-        if len(args) >= 2 and sys.argv[0] == '--venv':
-            use_venv = int(sys.argv[1])
-            args = args[2:]
+        if len(argv) >= 2 and argv[0] == '--venv':
+            use_venv = int(argv[1])
+            argv = argv[2:]
         if use_venv and not venv_in():
             # Rerun ourselves inside a venv.
             e = venv_run(
-                    sys.argv,
+                    argv,
                     f'venv-pymupdf-{platform.python_version()}-{int.bit_length(sys.maxsize+1)}',
                     )
             sys.exit(e)
             
+        # Check ordering of args.
+        for i in range(len(argv)-1, -1, -1):
+            if argv[i] in ('-b', '-w', '-W'):
+                if i < len(argv)-1:
+                    tail = ' '.join([shlex.quote(i) for i in argv[i+1:]])
+                    raise Exception(f'Trailing args after {argv[i]!r} will have no effect: {tail}')
+
         # Show system information.
         log(f'### Starting.')
         pipcl.show_system()
     
     # Handle args, strictly in order.
     #
-    args = iter(args)
+    args = iter(argv)
     while 1:
         try:
             arg = next(args)
@@ -263,10 +270,12 @@ def main():
         
         elif arg == '-m':
             mupdf = next(args)
-            if not mupdf.startswith('git:'):
+            if mupdf.startswith('git:'):
+                env_extra['PYMUPDF_SETUP_MUPDF_BUILD'] = mupdf
+            else:
                 if sync_paths:
                     print(mupdf)
-            env_extra['PYMUPDF_SETUP_MUPDF_BUILD'] = os.path.abspath(mupdf)
+                env_extra['PYMUPDF_SETUP_MUPDF_BUILD'] = os.path.abspath(mupdf)
         
         elif arg == '-o':
             os_names = next(args)
