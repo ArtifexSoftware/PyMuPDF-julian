@@ -3,10 +3,10 @@
 '''
 Build/test script for PyMuPDF.
 
-We always run ourselves inside a venv.
+We default to running ourselves inside a venv.
 
 Arguments are processed in the order they occur on the command line. So usually one
-would specify (for example) `-b` (build) before `-t` (test).
+would specify (for example) `-B debug` before `-b` (build) before `-t` (test).
 
 Example commands:
 
@@ -19,54 +19,62 @@ Example commands:
     Build and test a debug build with valgrind:
         -B debug -b -P valgrind -t
     
-    Build wheel with cibuildwheel:
-        -W
-    
-Args:
+    Build wheel with cibuildwheel using local `mupdf/` directory:
+        -m mupdf -W
 
+Args:
+    
     -h
     --help
         Show help and exit.
     -b
-        Build and install.
+        Build PyMuPDF and install into current venv, using `pip install`.
     -B <build_type>
-        Set build type, one of: 'release', 'debug'.
+        Set build type of later `-b` commands; one of: 'release', 'debug'.
         Equivalent to `-e PYMUPDF_SETUP_MUPDF_BUILD_TYPE=<build_type>`.
     -e <name>=<value>
         Add to environment used in later build/test commands. Can be specified
         multiple times.
     -E <env_name>
         Read next arg(s) from environmental variable <env_name>. Does nothing
-        if <env_name> is not set.
+        if <env_name> is not set. Useful when running via Github action.
     -m <mupdf>
-        Specify mupdf, sets PYMUPDF_SETUP_MUPDF_BUILD.
-    -o <os-names>
-        Only run if platform.system() is in comma-separated list <os-names>, or
-        <os-names> is empty.
+        Specify mupdf used by later `-b` args; sets PYMUPDF_SETUP_MUPDF_BUILD.
+    -o <os_names>
+        Control whether we do nothing on the current platform.
+        Only run later commands if platform.system() is in comma-separated list
+        <os_names>, or <os_names> is empty.
     -p <pytest_args>
-        Extra pytest args, for example `-p '-k <testname>'`.
+        Extra pytest args for later `-t` commands, for example `-p '-k
+        <testname>'`.
     -P <pytest_wrap>
-        Run pytest under a wrapper command, one of:
+        In later `-t` commands, run pytest under a wrapper command, one of:
             gdb
             helgrind
             valgrind
+    --packages 0|1
+        If 1 (the default), install system packages (with sudo) in later `-b`
+        or `-t` commands.
     --sync-paths
-        Do not run anything, instead write required files/directories/checkouts
-        to stdout. This is to allow automated running on remote machines.
+        Must be first arg. Do not run anything, instead write required
+        files/directories/checkouts to stdout. This is to help with automated
+        running on remote machines.
     -t
-        Run pytest tests.
+        Run pytest tests using PyMuPDF in current venv (typically installed
+        using an earlier `-b` or `-w` command.
     --venv 0|1
-        Must be first args; if 1 (the default) we re-run ourselves inside a
-        venv if we are not already in a venv.
+        Must be first args or immediately after `--sync-paths`; if 1 (the
+        default) we re-run ourselves inside a venv if we are not already in a
+        venv.
     --vs-upgrade 0|1
-        Equivalent to `-e PYMUPDF_SETUP_MUPDF_VS_UPGRADE=0|1`.
-        
-        If 1, upgrade Visual Studio files.
+        If 1, upgrade Visual Studio files in later `-b` commands. Equivalent to
+        `-e PYMUPDF_SETUP_MUPDF_VS_UPGRADE=0|1`.
     -w
-        Build wheel in directory `wheelhouse` and install.
+        Build wheel in directory `wheelhouse` and install into current venv.
     -W
         Build and test wheel(s) using cibuildwheel. Wheels are placed in
-        directory `wheelhouse`.
+        directory `wheelhouse`. We do not attempt to install wheels and so it
+        is generally not useful to do `-W -t`.
         
         If CIBW_ARCHS is unset we set $CIBW_ARCHS_WINDOWS, $CIBW_ARCHS_MACOS
         and $CIBW_ARCHS_LINUX to auto64 if they are unset.
@@ -74,7 +82,7 @@ Args:
         Additionally, if running on Github ($GITHUB_ACTIONS=true) and
         $CIBW_ARCHS_LINUX is unset, we set $CIBW_ARCHS_LINUX to 'auto64
         aarch64' so that we build for aarch64 using emulation. This is required
-        because there is no native aarch64 host available.
+        as of 2025-05-23 because there is no native aarch64 host available.
 '''
 
 import os
@@ -83,107 +91,80 @@ import shlex
 import subprocess
 import sys
 
-def relpath(path, start=None):
-    try:
-        return os.path.relpath(path, start)
-    except Exception:
-        assert platform.system() == 'Windows'
-        return os.path.abspath(path)
 
-
-g_root_dir = relpath(os.path.abspath(f'{__file__}/../..'))
+g_root_dir_abs = os.path.abspath(f'{__file__}/../..')
 
 try:
-    sys.path.insert(0, g_root_dir)
+    sys.path.insert(0, g_root_dir_abs)
     import pipcl
 finally:
     del sys.path[0]
 
+g_root_dir = pipcl.relpath(g_root_dir_abs)
 
 log = pipcl.log0
 run = pipcl.run
 
 
-if 1:
-    # For debugging.
-    log(f'### Starting.')
-    
-    log(f'{__file__=}')
-    log(f'{__name__=}')
-    log(f'{os.getcwd()=}')
-    log(f'{platform.machine()=}')
-    log(f'{platform.platform()=}')
-    log(f'{platform.python_version()=}')
-    log(f'{platform.system()=}')
-    log(f'{platform.uname()=}')
-    log(f'{sys.executable=}')
-    log(f'{sys.version=}')
-    log(f'{sys.version_info=}')
-    log(f'{list(sys.version_info)=}')
-    
-    log(f'CPU bits: {32 if sys.maxsize == 2**31 - 1 else 64} {sys.maxsize=}')
-    log(f'getconf ARG_MAX: {pipcl.run("getconf ARG_MAX", capture=1, check=0, verbose=0)!r}')
-    
-    log(f'sys.argv ({len(sys.argv)}):')
-    for i, arg in enumerate(sys.argv):
-        log(f'    {i}: {arg!r}')
-    
-    log(f'os.environ ({len(os.environ)}):')
-    for k in sorted( os.environ.keys()):
-        v = os.environ[ k]
-        log( f'    {k}: {v!r}')
-
-    
 def venv_in(path=None):
     '''
     If path is None, returns true if we are in a venv. Otherwise returns true
-    only is we are in venv <path>.
+    only if we are in venv <path>.
     '''
     if path:
-        #log(f'{os.path.abspath(sys.prefix)=} {os.path.abspath(path)=}')
         return os.path.abspath(sys.prefix) == os.path.abspath(path)
     else:
-        #log(f'{sys.prefix=} {sys.base_prefix=}')
         return sys.prefix != sys.base_prefix
 
 
-def venv_ensure(args=None, path='venv-pymupdf'):
+def venv_run(args, path, recreate=True):
     '''
-    If not running in venv <path>, creates it and re-run ourselves inside using
-    exec.
+    Runs command inside venv and returns termination code.
+    
+    Args:
+        args:
+            List of args.
+        path:
+            Name of venv.
+        recreate:
+            If false we do not run `<sys.executable> -m venv <path>` if <path>
+            already exists. This avoids a delay in the common case where <path>
+            is already set up, but fails if <path> exists but does not contain
+            a valid venv.
     '''
-    if args is None:
-        args = sys.argv
-    if not venv_in(path):
-        if 0 and os.path.exists(path):
-            pass
-        else:
-            log(f'{sys.executable=}')
-            run(f'{sys.executable} -m venv {path}')
-        # Would like to use os.execv() here, but on non-Windows i think this
-        # would need us to know what the shell is.
-        if platform.system() == 'Windows':
-            command = f'{path}\\Scripts\\activate'
-        else:
-            command = f'. {path}/bin/activate'
-        command += f' && python {shlex.join(args)}'
-        e = run(command, check=0)
-        sys.exit(e)
-        #cp = subprocess.run(command, shell=1, check=0)
-        #sys.exit(cp.returncode)
+    if recreate or not os.path.isdir(path):
+        run(f'{sys.executable} -m venv {path}')
+    if platform.system() == 'Windows':
+        command = f'{path}\\Scripts\\activate'
+    else:
+        command = f'. {path}/bin/activate'
+    command += f' && python {shlex.join(args)}'
+    e = run(command, check=0)
+    return e
 
 
 class NewFiles:
     '''
-    Detects new files matching a glob pattern.
+    Detects new files matching a glob pattern. Used to detect wheels created by
+    pip.
     '''
     def __init__(self, glob_pattern):
-        self.pattern = glob_pattern
-        self.items0 = set(glob.glob(self.pattern))
+        '''
+        Finds current matches of <glob_pattern>.
+        '''
+        self.glob_pattern = glob_pattern
+        self.items0 = set(glob.glob(self.glob_pattern))
     def get(self):
-        items = set(glob.glob(self.pattern))
+        '''
+        Returns lst of new matches of <glob_pattern>.
+        '''
+        items = set(glob.glob(self.glob_pattern))
         return list(items - self.items0)
     def get_one(self):
+        '''
+        Returns new match of <glob_pattern>, asserting that there is exactly
+        one.
+        '''
         ret = self.get()
         assert len(ret) == 1
         return ret[0]
@@ -210,15 +191,6 @@ def test_packages():
 
 def main():
 
-    # Create/enter hard-coded venv if not already in.
-    #
-    if sys.argv[1:2][0] in ('-h', '--help', '--sync-paths'):
-        pass
-    elif sys.argv[1:3] == ['--venv', '0']:
-        pass
-    else:
-        venv_ensure()
-    
     build_type = None
     env_extra = dict()
     install_packages = True
@@ -226,7 +198,38 @@ def main():
     pytest_wrap = None
     sync_paths = False
     
-    args = iter(sys.argv[1:])
+    args = sys.argv[1:]
+    
+    # Handle any initial --sync-paths and --venv args.
+    #
+    if len(args) >= 1 and args[0] == '--sync-paths':
+        # Don't call pipcl.show_system(), don't run ourselves inside a venv,
+        # don't run any builds or tests. We only output required files,
+        # directories and git checkouts.
+        sync_paths = True
+        args = args[1:]
+        print(g_root_dir)
+    else:
+        # Create/enter hard-coded venv if not already in a venv.
+        use_venv = True
+        if len(args) >= 2 and sys.argv[0] == '--venv':
+            use_venv = int(sys.argv[1])
+            args = args[2:]
+        if use_venv and not venv_in():
+            # Rerun ourselves inside a venv.
+            e = venv_run(
+                    sys.argv,
+                    f'venv-pymupdf-{platform.python_version()}-{int.bit_length(sys.maxsize+1)}',
+                    )
+            sys.exit(e)
+            
+        # Show system information.
+        log(f'### Starting.')
+        pipcl.show_system()
+    
+    # Handle args, strictly in order.
+    #
+    args = iter(args)
     while 1:
         try:
             arg = next(args)
@@ -234,6 +237,8 @@ def main():
             break
         
         if arg in ('-h', '--help'):
+            if sync_paths:
+                continue
             log(__doc__)
             return
         
@@ -259,16 +264,16 @@ def main():
         elif arg == '-m':
             mupdf = next(args)
             if not mupdf.startswith('git:'):
-                mupdf = os.path.abspath(mupdf)
                 if sync_paths:
                     print(mupdf)
-            env_extra['PYMUPDF_SETUP_MUPDF_BUILD'] = mupdf
+            env_extra['PYMUPDF_SETUP_MUPDF_BUILD'] = os.path.abspath(mupdf)
         
         elif arg == '-o':
             os_names = next(args)
-            if os_names and not sync_paths:
+            if os_names:
                 if platform.system().lower() not in os_names.split(','):
-                    log(f'Not running because {platform.system().lower()=} not in {os_names=}')
+                    if not sync_paths:
+                        log(f'Not running because {platform.system().lower()=} not in {os_names=}')
                     return
         
         elif arg == '-p':
@@ -279,10 +284,6 @@ def main():
         
         elif arg == '--packages':
             install_packages = int(next(args))
-        
-        elif arg == '--sync-paths':
-            sync_paths = True
-            print(g_root_dir)
         
         elif arg == '-t':
             # Test.
@@ -304,7 +305,7 @@ def main():
                 env_extra['PYTHONMALLOC'] = 'malloc'
                 command = (
                         f'valgrind'
-                        f' --suppressions={g_root_dir}/valgrind.supp'
+                        f' --suppressions={g_root_dir_abs}/valgrind.supp'
                         f' --trace-children=yes'
                         f' --num-callers=20'
                         f' --error-exitcode=100'
@@ -327,7 +328,7 @@ def main():
             else:
                 assert 0, f'Unrecognised {pytest_wrap=}'
 
-            command += f' {relpath(sys.executable)} -m pytest'
+            command += f' {pipcl.relpath(sys.executable)} -m pytest'
             if pytest_wrap in ('valgrind', 'helgrind'):
                 # Show all output even if tests pass.
                 command += f' -s'
@@ -336,9 +337,6 @@ def main():
             command += f' {g_root_dir}'
             run(command, env_extra=env_extra)
                 
-        elif arg == '--venv':
-            use_venv = int(next(args)) 
-        
         elif arg == '--vs-upgrade':
             env_extra['PYMUPDF_SETUP_MUPDF_VS_UPGRADE'] = next(args)
         
@@ -346,7 +344,7 @@ def main():
             # Build and install wheel.
             if sync_paths:
                 continue
-            newer_files = NewerFiles('wheelhouse/*.whl')
+            newer_files = NewFiles('wheelhouse/*.whl')
             run(f'pip wheel -w wheelhouse -v {g_root_dir}', env_extra=env_extra)
             wheel = newer_files.get_one()
             run(f'pip install {wheel}')
