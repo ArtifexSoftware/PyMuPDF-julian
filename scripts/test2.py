@@ -8,6 +8,9 @@ We default to running ourselves inside a venv.
 Arguments are processed in the order they occur on the command line. So usually one
 would specify (for example) `-B debug` before `-b` (build) before `-t` (test).
 
+We fail with an error if there are trailing arguments that will have no effect
+on any build or test commands.
+
 Example commands:
 
     Build and test:
@@ -176,7 +179,7 @@ def test_packages():
     pytests.
     '''
     ret = 'pytest fontTools pymupdf-fonts flake8 pylint codespell'
-    if platform.system() == 'Windows' and cpu_bits() == 32:
+    if platform.system() == 'Windows' and pipcl.cpu_bits() == 32:
         # No pillow wheel available, and doesn't build easily.
         pass
     else:
@@ -197,7 +200,7 @@ def main():
     pytest_args = None
     pytest_wrap = None
     sync_paths = False
-    
+
     argv = sys.argv[1:]
     
     # Handle any initial --sync-paths and --venv args.
@@ -209,27 +212,36 @@ def main():
         sync_paths = True
         argv = argv[1:]
         print(g_root_dir)
-    else:
-        # Create/enter hard-coded venv if not already in a venv.
-        use_venv = True
-        if len(argv) >= 2 and argv[0] == '--venv':
-            use_venv = int(argv[1])
-            argv = argv[2:]
-        if use_venv and not venv_in():
-            # Rerun ourselves inside a venv.
-            e = venv_run(
-                    argv,
-                    f'venv-pymupdf-{platform.python_version()}-{int.bit_length(sys.maxsize+1)}',
-                    )
-            sys.exit(e)
-            
-        # Check ordering of args.
-        for i in range(len(argv)-1, -1, -1):
-            if argv[i] in ('-b', '-w', '-W'):
-                if i < len(argv)-1:
-                    tail = ' '.join([shlex.quote(i) for i in argv[i+1:]])
-                    raise Exception(f'Trailing args after {argv[i]!r} will have no effect: {tail}')
+    
+    # Check ordering of args.
+    if not sync_paths:
+        for i in range(len(sys.argv)-1, -1, -1):
+            if sys.argv[i] in ('-b', '-w', '-W', '-t'):
+                if i < len(sys.argv)-1:
+                    log(f'Error: trailing args after {sys.argv[i]!r} will have no effect:')
+                    items = [shlex.quote(i) for i in sys.argv]
+                    lens = [1+len(i) for i in items]
+                    a = sum(lens[:i+1])
+                    b = sum(lens[i+1:]) - 1
+                    log(' '.join(items))
+                    log(f'{" "*a}{"^"*b}')
+                    sys.exit(1)
+                break
 
+    # Create/enter hard-coded venv if not already in a venv.
+    use_venv = True
+    if len(argv) >= 2 and argv[0] == '--venv':
+        use_venv = int(argv[1])
+        argv = argv[2:]
+    if not sync_paths and use_venv and not venv_in():
+        # Rerun ourselves inside a venv.
+        e = venv_run(
+                [sys.argv[0]] + argv,
+                f'venv-pymupdf-{platform.python_version()}-{int.bit_length(sys.maxsize+1)}',
+                )
+        sys.exit(e)
+
+    if not sync_paths:
         # Show system information.
         log(f'### Starting.')
         pipcl.show_system()

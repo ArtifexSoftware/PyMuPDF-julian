@@ -1994,6 +1994,39 @@ def linux():
 def openbsd():
     return platform.system() == 'OpenBSD'
 
+
+def show_system():
+    '''
+    Show useful information about the system plus argv and environ.
+    '''
+    def log(text):
+        log0(text, caller=3)
+    
+    #log(f'{__file__=}')
+    #log(f'{__name__=}')
+    log(f'{os.getcwd()=}')
+    log(f'{platform.machine()=}')
+    log(f'{platform.platform()=}')
+    log(f'{platform.python_version()=}')
+    log(f'{platform.system()=}')
+    log(f'{platform.uname()=}')
+    log(f'{sys.executable=}')
+    log(f'{sys.version=}')
+    log(f'{sys.version_info=}')
+    log(f'{list(sys.version_info)=}')
+    
+    log(f'CPU bits: {cpu_bits()}')
+    
+    log(f'sys.argv ({len(sys.argv)}):')
+    for i, arg in enumerate(sys.argv):
+        log(f'    {i}: {arg!r}')
+    
+    log(f'os.environ ({len(os.environ)}):')
+    for k in sorted( os.environ.keys()):
+        v = os.environ[ k]
+        log( f'    {k}: {v!r}')
+
+
 class PythonFlags:
     '''
     Compile/link flags for the current python, for example the include path
@@ -2166,6 +2199,10 @@ def _command_lines( command):
         if line.strip():
             lines.append(line.rstrip())
     return lines
+
+
+def cpu_bits():
+    return int.bit_length(sys.maxsize+1)
 
 
 def _cpu_name():
@@ -2422,7 +2459,7 @@ def log2(text='', caller=1):
 
 def _log(text, level, caller):
     '''
-    Logs lines with prefix.
+    Logs lines with prefix, if <level> is lower than <g_verbose>.
     '''
     if level <= g_verbose:
         fr = inspect.stack(context=0)[caller]
@@ -2447,49 +2484,6 @@ def relpath(path, start=None):
             return os.path.abspath(path)
     else:
         return os.path.relpath(path, start)
-
-
-def number_sep( s):
-    '''
-    Simple number formatter, adds commas in-between thousands. `s` can be a
-    number or a string. Returns a string.
-
-    >>> number_sep(1)
-    '1'
-    >>> number_sep(12)
-    '12'
-    >>> number_sep(123)
-    '123'
-    >>> number_sep(1234)
-    '1,234'
-    >>> number_sep(12345)
-    '12,345'
-    >>> number_sep(123456)
-    '123,456'
-    >>> number_sep(1234567)
-    '1,234,567'
-    >>> number_sep(-131072)
-    '-131,072'
-    '''
-    if not isinstance( s, str):
-        s = str( s)
-    ret = ''
-    if s.startswith('-'):
-        ret += '-'
-        s = s[1:]
-    c = s.find( '.')
-    if c==-1:   c = len(s)
-    end = s.find('e')
-    if end == -1:   end = s.find('E')
-    if end == -1:   end = len(s)
-    for i in range( end):
-        ret += s[i]
-        if i<c-1 and (c-i-1)%3==0:
-            ret += ','
-        elif i>c and i<end-1 and (i-c)%3==0:
-            ret += ','
-    ret += s[end:]
-    return ret
 
 
 def _so_suffix(use_so_versioning=True):

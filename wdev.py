@@ -34,7 +34,16 @@ class WindowsVS:
 
     `.csc` is C# compiler; will be None if not found.
     '''
-    def __init__( self, year=None, grade=None, version=None, cpu=None, verbose=False, directory=None):
+    def __init__(
+            self,
+            *,
+            year=None,
+            grade=None,
+            version=None,
+            cpu=None,
+            directory=None,
+            verbose=False,
+            ):
         '''
         Args:
             year:
@@ -53,7 +62,15 @@ class WindowsVS:
                 variable WDEV_VS_VERSION if set.
             cpu:
                 None or a `WindowsCpu` instance.
+            directory:
+                Ignore year, grade, version and cpu and use this directory
+                directly.
+            verbose:
+                .
+            
         '''
+        if year is not None:
+            year = str(year)    # Allow specifiction as a number.
         def default(value, name):
             if value is None:
                 name2 = f'WDEV_VS_{name.upper()}'
@@ -77,7 +94,7 @@ class WindowsVS:
                 if verbose:
                     _log( f'Matches for: {pattern=}')
                     _log( f'{directories=}')
-                assert directories, f'No match found for: {pattern}'
+                assert directories, f'No match found for {pattern=}.'
                 directories.sort()
                 directory = directories[-1]
 
@@ -169,7 +186,7 @@ class WindowsVS:
             self.year = year
             self.cpu = cpu
         except Exception as e:
-            raise Exception( f'Unable to find Visual Studio') from e
+            raise Exception( f'Unable to find Visual Studio {year=} {grade=} {version=} {cpu=} {directory=}') from e
 
     def description_ml( self, indent=''):
         '''

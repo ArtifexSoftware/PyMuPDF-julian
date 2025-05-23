@@ -1,3 +1,10 @@
+# Run scripts/test2.py directly on multiple Github servers.  Instead of
+# specifying individual inputs, we support a single string input which is used
+# for the command line directly.
+#
+# This ensures we behave exactly like scripts/test2.py, without confusion
+# caused by having to translate between differing APIs.
+
 name: Test2
 
 on:
@@ -19,7 +26,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-13, macos-14]
+        os: [ubuntu-latest, windows-2019, macos-13, macos-14]
 
       # Avoid cancelling of all runs after a single failure.
       fail-fast: false
