@@ -21,6 +21,7 @@ import io
 import os
 import platform
 import re
+import shlex
 import shutil
 import site
 import subprocess
@@ -1952,11 +1953,12 @@ def run(
         env.update(env_extra)
     lines = _command_lines( command)
     if verbose:
-        text = f'Running'
+        text = f'Running:'
         if env_extra:
-            text += f' with {env_extra=}'
+            for k in sorted(env_extra.keys()):
+                text += f' {k}={shlex.quote(env_extra[k])}'
         nl = '\n'
-        text += f': {nl.join(lines)}'
+        text += f' {nl.join(lines)}'
         log1(text, caller=caller+1)
     sep = ' ' if windows() else ' \\\n'
     command2 = sep.join( lines)
