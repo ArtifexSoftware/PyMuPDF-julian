@@ -3,96 +3,40 @@
 '''
 Build/test script for PyMuPDF.
 
-We automatically use an internal Python venv.
-* Builds install into this venv.
-* Tests use whatever PyMuPDF is installed in the venv.
+Example arguments
 
-Example args.
-    -b -t
-        Build and test.
-    -B debug -b -t
-        Build and test debug build.
-    -B debug -b -T valgrind -t
-        Build and test a debug build with valgrind.
-    -m mupdf -W
-        Build wheel with cibuildwheel using local `mupdf/` directory.
-    -i pymupdf==1.25.5 -t
+    build test
+        Build and test PyMuPDF with setup.py's hard-coded MuPDF.
+    -m mupdf build test
+        Build and test PyMuPDF with local MuPDF directory `mupdf/`.
+    -B debug -m mupdf build test
+        Build and test a debug build with local MuPDF.
+    -B debug -m mupdf -T valgrind build test
+        Build and test a debug build with valgrind and local MuPDF.
+    -m mupdf cibw
+        Build wheel(s) with cibuildwheel and local MuPDF.
+    install pymupdf==1.25.5 test
         Test PyMuPDF-1.25.5 from pypi.org.
 
-Arg details.
-    -a <env_name>
-        Read next space-separated arg(s) from environmental variable
-        <env_name>.
-        * Does nothing if <env_name> is not set.
-        * Useful when running via Github action.
-    -b
+Usage:
+
+* Command line arguments are called parameters if they start with `-`,
+  otherwise they are called commands.
+* Parameters are evaluated first in the oder that they were specified.
+* Then commands are run in the order in which they were specified.
+* Usually `test` would be specified after `build`, `install` or `wheel`.
+* Parameters and commands can be interleaved but it may be clearer to group
+  them together on the command line.
+
+Commands (arguments that do not start with '-'):
+
+    build
         Build PyMuPDF and install into current venv, using `pip install`.
-    -B <build_type>
-        Set build type for -b and -w build/install commands.
-        * <build_type> must be one of: 'release', 'debug'.
-        * Equivalent to `-e PYMUPDF_SETUP_MUPDF_BUILD_TYPE=<build_type>`.
-    -e <name>=<value>
-        Add to environment used in build and test commands. Can be specified
-        multiple times.
-    -h
-    --help
-        Show help and exit.
-    -i <pymupdf>
-        Install PyMuPDF directly using pip by running:
-            pip install --force-reinstall <pymupdf>
-        * For example `-i pymupdf==1.25.5` will install PyMuPDF-1.25.5 from
-          pypi.org.
-    -m <mupdf>
-        Specify the mupdf to used by -b, -w and -W build commands.
-        * If starts with `git:`, specifies Git location to clone.
-        * Otherwise should be local directory.
-        * Sets $PYMUPDF_SETUP_MUPDF_BUILD.
-        * See setup.py's documentation of PYMUPDF_SETUP_MUPDF_BUILD for
-          details.
-    -M 0|1
-        Whether to build MuPDF specified by -m. Default is 1.
-        * Equivalent to `-e PYMUPDF_SETUP_MUPDF_REBUILD=0|1`.
-    -o <os_names>
-        Control whether we do nothing on the current platform.
-        * <os_names> is a comma-separated list of names.
-        * If <os_names> is empty (the default), we always run normally.
-        * Otherwise we only run if an item in <os_names> matches (case
-          insensitive) platform.system().
-        * For example `-o linux,darwin` will do nothing unless on Linux or
-          MacOS.
-    -p <pytest_args>
-        Extra pytest args for -t tests, for example `-p '-k test_foo'` to run
-        only `test_foo()`.
-    --packages 0|1
-        If 1 (the default), install required system packages (with sudo) in
-        build and test commands.
-    --sync-paths
-        Do not run anything, instead write required files/directories/checkouts
-        to stdout, one per line. This is to help with automated running on
-        remote machines.
-    -t
-        Run pytest tests using the PyMuPDF in the venv (typically installed by
-        an earlier -b or -w command).
-    -T <test_wrap>
-        In -t test commands, run pytest under a wrapper command, one of:
-            gdb
-            helgrind
-            valgrind
-    -v 0|1
-        If 1 (the default) and we are not already in a venv, we create a venv
-        and rerun ourselves inside it.
-        * The venv is called `venv-pymupdf-<version>-<wordsize>`.
-    --vs-upgrade 0|1
-        If 1, upgrade Visual Studio files when building MuPDF. Equivalent to
-        `-e PYMUPDF_SETUP_MUPDF_VS_UPGRADE=0|1`.
-    -w
-        Build a PyMuPDF wheel in directory `wheelhouse` using pip, and install
-        into current venv.
-    -W
+    cibw
         Build and test PyMuPDF wheel(s) using cibuildwheel. Wheels are placed
         in directory `wheelhouse`.
         * We do not attempt to install wheels.
-        * So it is generally not useful to do `-W -t`.
+        * So it is generally not useful to do `cibw test`.
         
         If CIBW_BUILD is unset, we set it as follows:
         * On Github we build and test all supported Python versions.
@@ -105,20 +49,90 @@ Arg details.
         $CIBW_ARCHS_LINUX is unset, we set $CIBW_ARCHS_LINUX to 'auto64
         aarch64' so that we build for aarch64 using emulation. This is required
         as of 2025-05-23 because there is no native aarch64 host available.
+    install <pymupdf>
+        Install PyMuPDF directly using pip by running:
+            pip install --force-reinstall <pymupdf>
+        * For example `install pymupdf==1.25.5` will install PyMuPDF-1.25.5 from
+          pypi.org.
+    test
+        Run pytest tests using the PyMuPDF in the venv (typically installed by
+        an earlier `build`, `install` or `wheel` command).
+    wheel
+        Build a PyMuPDF wheel in directory `wheelhouse` using pip, and install
+        into current venv.
 
-Ordering of args.
-* First all non-build/test args are processed in the order given.
-* Some non-build/test args are cumulative, others will overwrite earlier
-  settings.
-* Second we execute build/test args (-b, -t, -w, -W) in the order specified.
-* Usually -t (test) would be specified after -b (build and install) or -w
-  (build and install wheel).
+Parameters (arguments that start with '-') generally effect the behaviour of
+commands:
 
-Extra support for use in a Github action.
-* We allow extra command-line args to be read from environment variables.
-* See the -a arg above.
+    -a <env_name>
+        Read next space-separated argument(s) from environmental variable
+        <env_name>.
+        * Does nothing if <env_name> is unset.
+        * Useful when running via Github action.
+    -b <build_type>
+        Set build type for `build` and `wheel` build/install commands.
+        * <build_type> must be one of: 'release', 'debug'.
+        * Equivalent to `-e PYMUPDF_SETUP_MUPDF_BUILD_TYPE=<build_type>`.
+    -e <name>=<value>
+        Add to environment used in build and test commands. Can be specified
+        multiple times.
+    -h
+    --help
+        Show help and exit.
+    -m <mupdf>
+        Specify the mupdf to used by `build`, `wheel` and `cibw` build
+        commands.
+        * If starts with `git:`, specifies Git location to clone.
+        * Otherwise should be local directory.
+        * Sets $PYMUPDF_SETUP_MUPDF_BUILD.
+        * See setup.py's documentation of PYMUPDF_SETUP_MUPDF_BUILD for
+          details.
+    -M 0|1
+        Whether to build MuPDF when building PyMuPDF with `build` or
+        `wheel`. Default is 1.
+        * Equivalent to `-e PYMUPDF_SETUP_MUPDF_REBUILD=0|1`.
+    -o <os_names>
+        Control whether we do nothing on the current platform.
+        * <os_names> is a comma-separated list of names.
+        * If <os_names> is empty (the default), we always run normally.
+        * Otherwise we only run if an item in <os_names> matches (case
+          insensitive) platform.system().
+        * For example `-o linux,darwin` will do nothing unless on Linux or
+          MacOS.
+    -p <pytest_args>
+        Extra pytest arguments when running tests, for example `-p '-k
+        test_foo'` will run only `test_foo()`.
+    --packages 0|1
+        If 1 (the default), install required system packages (with sudo) in
+        build and test commands.
+    --sync-paths
+        Do not run anything, instead write required files/directories/checkouts
+        to stdout, one per line. This is to help with automated running on
+        remote machines.
+    -T <test_wrap>
+        When running tests, run pytest under a wrapper command, one of:
+            gdb
+            helgrind
+            valgrind
+    -v 0|1
+        If 1 (the default) and we are not already in a venv, we create a venv
+        and rerun ourselves inside it.
+        * The venv is called `venv-pymupdf-<version>-<wordsize>`.
+    --vs-upgrade 0|1
+        If 1, upgrade Visual Studio files when building MuPDF. Equivalent to
+        `-e PYMUPDF_SETUP_MUPDF_VS_UPGRADE=0|1`.
+
+We automatically use an internal Python venv:
+
+* Builds install into this venv.
+* Tests use whatever PyMuPDF is installed in the venv.
+
+Extra support for use in a Github action:
+
+* We allow extra command-line arguments to be read from environment variables.
+* See the -a parameter above.
 * This allows complex command lines to be specified as a single string,
-  allowing a workaround for Github's 10-arg workflow parameter limit.
+  allowing a workaround for Github's 10-argument workflow parameter limit.
 '''
 
 import os
@@ -223,6 +237,143 @@ def test_packages():
     return ret
 
 
+def build_pyodide_wheel(pyodide_build_version=None):
+    '''
+    Build Pyodide wheel.
+
+    This runs `pyodide build` inside the PyMuPDF directory, which in turn runs
+    setup.py in a Pyodide build environment.
+    '''
+    log(f'## Building Pyodide wheel.')
+
+    # Our setup.py does not know anything about Pyodide; we set a few
+    # required environmental variables here.
+    #
+    env_extra = dict()
+
+    # Disable libcrypto because not available in Pyodide.
+    env_extra['HAVE_LIBCRYPTO'] = 'no'
+
+    # Tell MuPDF to build for Pyodide.
+    env_extra['OS'] = 'pyodide'
+
+    # Build a single wheel without a separate PyMuPDFb wheel.
+    env_extra['PYMUPDF_SETUP_FLAVOUR'] = 'pb'
+    
+    # 2023-08-30: We set PYMUPDF_SETUP_MUPDF_BUILD_TESSERACT=0 because
+    # otherwise mupdf thirdparty/tesseract/src/ccstruct/dppoint.cpp fails to
+    # build because `#include "errcode.h"` finds a header inside emsdk. This is
+    # pyodide bug https://github.com/pyodide/pyodide/issues/3839. It's fixed in
+    # https://github.com/pyodide/pyodide/pull/3866 but the fix has not reached
+    # pypi.org's pyodide-build package. E.g. currently in tag 0.23.4, but
+    # current devuan pyodide-build is pyodide_build-0.23.4.
+    #
+    env_extra['PYMUPDF_SETUP_MUPDF_TESSERACT'] = '0'
+    setup = pyodide_setup(g_root_dir_abs, pyodide_build_version=pyodide_build_version)
+    command = f'{setup} && echo "### Running pyodide build" && pyodide build --exports whole_archive'
+    
+    command = command.replace(' && ', '\n && ')
+    
+    run(command, env_extra=env_extra)
+    
+    # Copy wheel into `wheelhouse/` so it is picked up as a workflow
+    # artifact.
+    #
+    run(f'ls -l {g_root_dir_abs}/dist/')
+    run(f'mkdir -p {g_root_dir_abs}/wheelhouse && cp -p {g_root_dir_abs}/dist/* {g_root_dir_abs}/wheelhouse/')
+    run(f'ls -l {g_root_dir_abs}/wheelhouse/')    
+
+
+def pyodide_setup(
+        directory,
+        clean=False,
+        pyodide_build_version=None,
+        ):
+    '''
+    Returns a command that will set things up for a pyodide build.
+    
+    Args:
+        directory:
+            Our command cd's into this directory.
+        clean:
+            If true we create an entirely new environment. Otherwise
+            we reuse any existing emsdk repository and venv.
+        pyodide_build_version:
+            Version of Python package pyodide-build; if None we use latest
+            available version.
+            2025-02-13: pyodide_build_version='0.29.3' works.
+    
+    The returned command does the following:
+    
+    * Checkout latest emsdk from https://github.com/emscripten-core/emsdk.git:
+      * Clone emsdk repository to `emsdk` if not already present.
+      * Run `git pull -r` inside emsdk checkout.
+    * Create venv `venv_pyodide_<python_version>` if not already present.
+    * Activate venv `venv_pyodide_<python_version>`.
+    * Install/upgrade package `pyodide-build`.
+    * Run emsdk install scripts and enter emsdk environment.
+    
+    Example usage in a build function:
+    
+        command = pyodide_setup()
+        command += ' && pyodide build --exports pyinit'
+        subprocess.run(command, shell=1, check=1)
+    '''
+    
+    pv = platform.python_version_tuple()[:2]
+    assert pv == ('3', '12'), f'Pyodide builds need to be run with Python-3.12 but current Python is {platform.python_version()}.'
+    command = f'cd {directory}'
+    
+    # Clone/update emsdk. We always use the latest emsdk with `git pull`.
+    #
+    # 2025-02-13: this works: 2514ec738de72cebbba7f4fdba0cf2fabcb779a5
+    #
+    dir_emsdk = 'emsdk'
+    if clean:
+        shutil.rmtree(dir_emsdk, ignore_errors=1)
+        # 2024-06-25: old `.pyodide-xbuildenv` directory was breaking build, so
+        # important to remove it here.
+        shutil.rmtree('.pyodide-xbuildenv', ignore_errors=1)
+    if not os.path.exists(f'{directory}/{dir_emsdk}'):
+        command += f' && echo "### Cloning emsdk.git"'
+        command += f' && git clone https://github.com/emscripten-core/emsdk.git {dir_emsdk}'
+    command += f' && echo "### Updating checkout {dir_emsdk}"'
+    command += f' && (cd {dir_emsdk} && git pull -r)'
+    command += f' && echo "### Checkout {dir_emsdk} is:"'
+    command += f' && (cd {dir_emsdk} && git show -s --oneline)'
+    
+    # Create and enter Python venv.
+    #
+    python = sys.executable
+    venv_pyodide = f'venv_pyodide_{sys.version_info[0]}.{sys.version_info[1]}'
+    
+    if not os.path.exists( f'{directory}/{venv_pyodide}'):
+        command += f' && echo "### Creating venv {venv_pyodide}"'
+        command += f' && {python} -m venv {venv_pyodide}'
+    command += f' && . {venv_pyodide}/bin/activate'
+    command += f' && echo "### Installing Python packages."'
+    command += f' && python -m pip install --upgrade pip wheel pyodide-build'
+    if pyodide_build_version:
+        command += f'=={pyodide_build_version}'
+    
+    # Run emsdk install scripts and enter emsdk environment.
+    #
+    command += f' && cd {dir_emsdk}'
+    command += ' && PYODIDE_EMSCRIPTEN_VERSION=$(pyodide config get emscripten_version)'
+    command += ' && echo "### PYODIDE_EMSCRIPTEN_VERSION is: $PYODIDE_EMSCRIPTEN_VERSION"'
+    command += ' && echo "### Running ./emsdk install"'
+    command += ' && ./emsdk install ${PYODIDE_EMSCRIPTEN_VERSION}'
+    command += ' && echo "### Running ./emsdk activate"'
+    command += ' && ./emsdk activate ${PYODIDE_EMSCRIPTEN_VERSION}'
+    command += ' && echo "### Running ./emsdk_env.sh"'
+    command += ' && . ./emsdk_env.sh'   # Need leading `./` otherwise weird 'Not found' error.
+    
+    command += ' && cd ..'
+    return command
+
+
+
+
 def main():
 
     # Set default state.
@@ -233,6 +384,7 @@ def main():
     packages = True
     mupdf = None
     os_names = list()
+    pyodide_build_version = None
     pytest_args = None
     test_wrap = None
     show_help = False
@@ -258,26 +410,16 @@ def main():
             args = iter(_args)
         
         elif arg == '-b':
-            commands.append(arg)
-        
-        elif arg == '-B':
-            env_extra['PYMUPDF_SETUP_BUILD_TYPE'] = next(args)
+            env_extra['PYMUPDF_SETUP_MUPDF_BUILD_TYPE'] = next(args)
         
         elif arg == '-e':
             _nv = next(args)
             assert '=' in _nv, f'-e <name>=<value> does not contain "=": {_nv!r}'
-            try:
-                _name, _value = _nv.split('=', 1)
-            except Exception as e:
-                raise Exception(f'Unable to parse into <name>=<value>: {_nv!r}') from e
+            _name, _value = _nv.split('=', 1)
             env_extra[_name] = _value
         
         elif arg in ('-h', '--help'):
             show_help = True
-        
-        elif arg == '-i':
-            _pymupdf = next(args)
-            commands.append(f'-i{_pymupdf}')
         
         elif arg == '-m':
             mupdf = next(args)
@@ -288,8 +430,7 @@ def main():
                 env_extra['PYMUPDF_SETUP_MUPDF_BUILD'] = os.path.abspath(mupdf)
         
         elif arg == '-M':
-            _b = next(args)
-            env_extra['PYMUPDF_SETUP_MUPDF_REBUILD'] = _b
+            env_extra['PYMUPDF_SETUP_MUPDF_REBUILD'] = next(args)
         
         elif arg == '-o':
             os_names += next(args).split(',')
@@ -297,11 +438,17 @@ def main():
         elif arg == '-p':
             pytest_args = next(args)
         
+        elif arg == 'test':
+            commands.append(arg)
+        
         elif arg == '-T':
             test_wrap = next(args)
         
         elif arg == '--packages':
             packages = int(next(args))
+        
+        elif arg == '--pyodide-build-version':
+            pyodide_build_version = next(args)
         
         elif arg == '--sync-paths':
             sync_paths = True
@@ -309,7 +456,20 @@ def main():
         elif arg == '-v':
             venv = next(args)
                 
-        elif arg in ('-t', '-w', '-W'):
+        elif arg == 'build':
+            commands.append(arg)
+        
+        elif arg == 'cibw':
+            commands.append(arg)
+        
+        elif arg == 'install':
+            _pymupdf = next(args)
+            commands.append(f'install {_pymupdf}')
+        
+        elif arg == 'wheel':
+            commands.append(arg)
+        
+        elif arg == 'pyodide':
             commands.append(arg)
         
         else:
@@ -357,17 +517,20 @@ def main():
     have_installed = False
     for command in commands:
         
-        if command == '-b':
+        if command == 'build':
             # Build and install with pip.
             run(f'pip install -v ./{g_root_dir}', env_extra=env_extra)
             have_installed = True
         
-        elif command.startswith('-i'):
-            _pymupdf = command[2:]
+        elif command.startswith('install '):
+            _pymupdf = command.lstrip('install ')
             run(f'pip install --force-reinstall {_pymupdf}')
             have_installed = True
         
-        elif command == '-t':
+        elif arg == 'pyodide':
+            build_pyodide_wheel(pyodide_build_version=pyodide_build_version)
+        
+        elif command == 'test':
             # Test.
             if not have_installed:
                 log(f'## Warning: have not built/installed PyMuPDF; testing whatever is already installed.')
@@ -419,7 +582,7 @@ def main():
             command += f' {g_root_dir}'
             run(command, env_extra=env_extra)
                 
-        elif command == '-w':
+        elif command == 'wheel':
             # Build and install wheel.
             newer_files = NewFiles('wheelhouse/*.whl')
             run(f'pip wheel -w wheelhouse -v {g_root_dir}', env_extra=env_extra)
@@ -427,7 +590,7 @@ def main():
             run(f'pip install {wheel}')
             have_installed = True
         
-        elif command == '-W':
+        elif command == 'cibw':
             # Build wheel(s) with cibuildwheel.
             run(f'pip install --upgrade cibuildwheel')
 
@@ -481,6 +644,11 @@ def main():
             log(f'py_limited_api: building for first Python version.')
             env_extra['CIBW_BUILD'] = CIBW_BUILD.split()[0]
             run(f'cd {g_root_dir} && cibuildwheel', env_extra=env_extra)
+
+            # Pass all the environment variables we have set, to Linux
+            # docker. Note that this will miss any settings in the original
+            # environment.
+            env_extra['CIBW_ENVIRONMENT_PASS_LINUX'] = ' '.join(sorted(env_extra.keys()))
 
             # Tell cibuildwheel to build and test all specified Python
             # verisons; it will notice that the wheel we built above supports
