@@ -630,7 +630,7 @@ def cibuildwheel(env_extra):
     #
     env_extra['CIBW_BUILD'] = CIBW_BUILD
     run(f'cd {pymupdf_dir} && cibuildwheel', env_extra=env_extra)
-    run(f'ls -ld {g_root_dir}/wheelhouse/*')
+    run(f'ls -ld {pymupdf_dir}/wheelhouse/*')
         
 
 def build_pyodide_wheel(pyodide_build_version=None):
@@ -887,7 +887,7 @@ def test(*,
         env_extra['PYTHONMALLOC'] = 'malloc'
         command += (
                     f' valgrind'
-                    f' --suppressions={g_root_dir_abs}/valgrind.supp'
+                    f' --suppressions={pymupdf_dir_abs}/valgrind.supp'
                     f' --trace-children=yes'
                     f' --num-callers=20'
                     f' --error-exitcode=100'
