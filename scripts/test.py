@@ -35,9 +35,11 @@ Usage:
   https://mupdf.readthedocs.io/en/latest/language-bindings.html#environmental-variables
 
 Options:
-    --help
-    -h
-        Show help.
+    -a <env_name>
+        Read next space-separated argument(s) from environmental variable
+        <env_name>.
+        * Does nothing if <env_name> is unset.
+        * Useful when running via Github action.
     -b <build>
         Set build type for `build` or `buildtest` commands. `<build>` should
         be one of 'release', 'debug', 'memento'. [This makes `build` set
@@ -47,6 +49,9 @@ Options:
         Equivalent to `-b debug`.
     -f 0|1
         If 1 we also test alias `fitz` as well as `pymupdf`. Default is '0'.
+    --help
+    -h
+        Show help.
     -i <implementations>
         Set PyMuPDF implementations to test.
         <implementations> must contain only these individual characters:
@@ -80,20 +85,28 @@ Options:
         1 - Use venv. If it already exists, we assume the existing directory
             was created by us earlier and is a valid venv containing all
             necessary packages; this saves a little time.
-        2 - use venv.
+        2 - use venv
         The default is 2.
-    --build-isolation 0|1
-        If true (the default on non-OpenBSD systems), we let pip create and use
-        its own new venv to build PyMuPDF. Otherwise we force pip to use the
-        current venv.
     --build-flavour <build_flavour>
         Combination of 'p', 'b', 'd'. See ../setup.py's description of
         PYMUPDF_SETUP_FLAVOUR. Default is 'pbd', i.e. self-contained PyMuPDF
         wheels including MuPDF build-time files.
-    --build-mupdf 0|1
+    --build-isolation 0|1
+        If true (the default on non-OpenBSD systems), we let pip create and use
+        its own new venv to build PyMuPDF. Otherwise we force pip to use the
+        current venv.
+    --build-mupdf 0|1 | -M 0|1
         Whether to rebuild mupdf when we build PyMuPDF. Default is 1.
     --gdb 0|1
         Run tests under gdb. Requires user interaction.
+    -o <os_names>
+        Control whether we do nothing on the current platform.
+        * <os_names> is a comma-separated list of names.
+        * If <os_names> is empty (the default), we always run normally.
+        * Otherwise we only run if an item in <os_names> matches (case
+          insensitive) platform.system().
+        * For example `-o linux,darwin` will do nothing unless on Linux or
+          MacOS.
     --pytest-prefix <command>
         Use specified prefix when running pytest. E.g. `gdb --args`.
     --pybind 0|1
@@ -104,6 +117,10 @@ Options:
         Do not build PyMuPDF, instead install with `pip install <name>`. For
         example allows testing of a specific version with `--pymupdf-pypi
         pymupdf==x.y.z`.
+    --sync-paths
+        Do not run anything, instead write required files/directories/checkouts
+        to stdout, one per line. This is to help with automated running on
+        remote machines.
     --system-site-packages 0|1
         If 1, use `--system-site-packages` when creating venv. Defaults is 0.
     --timeout <seconds>
@@ -119,11 +136,25 @@ Commands:
         Builds and installs PyMuPDF into venv, using `pip install .../PyMuPDF`.
     buildtest
         Same as 'build test'.
-    test
-        Runs PyMuPDF's pytest tests in venv. Default is to test rebased and
-        unoptimised rebased; use `-i` to change this.
-    wheel
-        Build wheel.
+    cibw
+        Build and test PyMuPDF wheel(s) using cibuildwheel. Wheels are placed
+        in directory `wheelhouse`.
+        * We do not attempt to install wheels.
+        * So it is generally not useful to do `cibw test`.
+        
+        If CIBW_BUILD is unset, we set it as follows:
+        * On Github we build and test all supported Python versions.
+        * Otherwise we build and test the current Python version only.
+        
+        If CIBW_ARCHS is unset we set $CIBW_ARCHS_WINDOWS, $CIBW_ARCHS_MACOS
+        and $CIBW_ARCHS_LINUX to auto64 if they are unset.
+        
+        Additionally, if running on Github ($GITHUB_ACTIONS=true) and
+        $CIBW_ARCHS_LINUX is unset, we set $CIBW_ARCHS_LINUX to 'auto64
+        aarch64' so that we build for aarch64 using emulation. This is required
+        as of 2025-05-23 because there is no native aarch64 host available.
+    install <pymupdf>
+        Install with `pip install --force-reinstall <pymupdf>`.
     pyodide_wheel
         Build Pyodide wheel. We clone `emsdk.git`, set it up, and run
         `pyodide build`. This runs our setup.py with CC etc set up
@@ -133,6 +164,11 @@ Commands:
         It seems that sys.version must match the Python version inside emsdk;
         as of 2025-02-14 this is 3.12. Otherwise we get build errors such as:
             [wasm-validator error in function 723] unexpected false: all used features should be allowed, on ...
+    test
+        Runs PyMuPDF's pytest tests. Default is to test rebased and unoptimised
+        rebased; use `-i` to change this.
+    wheel
+        Build and install wheel.
             
 
 Environment:
@@ -152,11 +188,15 @@ import sys
 import textwrap
 
 
-pymupdf_dir = os.path.abspath( f'{__file__}/../..')
+pymupdf_dir_abs = os.path.abspath( f'{__file__}/../..')
 
-sys.path.insert(0, pymupdf_dir)
-import pipcl
-del sys.path[0]
+try:
+    sys.path.insert(0, pymupdf_dir_abs)
+    import pipcl
+finally:
+    del sys.path[0]
+
+pymupdf_dir = pipcl.relpath(pymupdf_dir_abs)
 
 log = pipcl.log0
 run = pipcl.run
@@ -171,35 +211,38 @@ def main(argv):
         show_help()
         return
     
-    log(f'{sys.executable=}')
-    log(f'{sys.version=}')
-
+    build_flavour = 'pbd'
     build_isolation = None
+    build_mupdf = True
+    build_type = None
+    commands = list()
+    gdb = False
+    implementations = 'r'
+    mupdf_sync = None
+    os_names = list()
+    packages = False
+    pybind = False
+    pymupdf_pypi = None
+    pyodide_build_version = None
+    pytest_k = None
+    pytest_options = None
+    pytest_prefix = None
+    s = True
+    show_help = False
+    sync_paths = False
+    system_site_packages = False
+    test_fitz = False
+    test_names = list()
+    timeout = None
     valgrind = False
     valgrind_args = ''
-    s = True
-    build_do = 'i'
-    build_type = None
-    build_mupdf = True
-    build_flavour = 'pbd'
-    gdb = False
-    test_fitz = False
-    implementations = 'r'
-    test_names = list()
     venv = 2
-    pytest_prefix = None
-    pybind = False
-    pytest_options = None
-    timeout = None
-    pytest_k = None
-    system_site_packages = False
-    pyodide_build_version = None
-    packages = False
-    pymupdf_pypi = None
     
     options = os.environ.get('PYMUDF_SCRIPTS_TEST_options', '')
     options = shlex.split(options)
     
+    # Parse args and update the above state.
+    #
     args = iter(options + argv[1:])
     i = 0
     while 1:
@@ -208,138 +251,266 @@ def main(argv):
         except StopIteration:
             arg = None
             break
-        if not arg.startswith('-'):
-            break
+        
+        if 0:
+            pass
+        
+        elif arg == '-a':
+            _name = next(args)
+            _value = os.environ.get(_name, '')
+            _args = shlex.split(_value) + list(args)
+            args = iter(_args)
+        
         elif arg == '-b':
             build_type = next(args)
+        
         elif arg == '--build-isolation':
             build_isolation = int(next(args))
+        
         elif arg == '-d':
             build_type = 'debug'
+        
         elif arg == '-f':
             test_fitz = int(next(args))
+        
         elif arg in ('-h', '--help'):
-            show_help()
-            return
+            show_help = True
+        
         elif arg == '-i':
             implementations = next(args)
+        
         elif arg in ('--mupdf', '-m'):
-            mupdf = next(args)
-            if not mupdf.startswith('git:') and '://' not in mupdf and mupdf != '-':
-                assert os.path.isdir(mupdf), f'Not a directory: {mupdf=}.'
-                mupdf = os.path.abspath(mupdf)
-            os.environ['PYMUPDF_SETUP_MUPDF_BUILD'] = mupdf
+            _mupdf = next(args)
+            if _mupdf == '-':
+                _mupdf = None
+            elif _mupdf.startswith('git:') or '://' in _mupdf:
+                os.environ['PYMUPDF_SETUP_MUPDF_BUILD'] = _mupdf
+            else:
+                assert os.path.isdir(_mupdf), f'Not a directory: {_mupdf=}'
+                os.environ['PYMUPDF_SETUP_MUPDF_BUILD'] = os.path.abspath(_mupdf)
+                mupdf_sync = _mupdf
+        
         elif arg == '-k':
             pytest_k = next(args)
+        
+        elif arg == '-o':
+            os_names += next(args).split(',')
+        
         elif arg == '-p':
             pytest_options = next(args)
+        
         elif arg == '-P':
             packages = int(next(args))
+        
         elif arg == '-s':
             value = next(args)
             assert value in ('0', '1'), f'`-s` must be followed by `0` or `1`, not {value=}.'
             os.environ['PYMUPDF_SETUP_PY_LIMITED_API'] = value
+        
         elif arg == '--pytest-prefix':
             pytest_prefix = next(args)
+        
         elif arg == '--pybind':
             pybind = int(next(args))
+        
         elif arg == '--system-site-packages':
             system_site_packages = int(next(args))
+        
         elif arg == '-t':
             test_names += next(args).split(',')
+        
         elif arg == '--timeout':
             timeout = float(next(args))
+        
         elif arg == '-v':
             venv = int(next(args))
+        
         elif arg == '--build-flavour':
             build_flavour = next(args)
-        elif arg == '--build-mupdf':
+        
+        elif arg in ('-M', '--build-mupdf'):
             build_mupdf = int(next(args))
+        
         elif arg == '--gdb':
             gdb = int(next(args))
+        
         elif arg == '--valgrind':
             valgrind = int(next(args))
+        
         elif arg == '--valgrind-args':
             valgrind_args = next(args)
+        
         elif arg == '--pyodide-build-version':
             pyodide_build_version = next(args)
+        
         elif arg == '--pymupdf-pypi':
             pymupdf_pypi = next(args)
+        
+        elif arg == '--sync-paths':
+            sync_paths = True
+        
+        elif arg in ('build', 'cibw', 'test', 'wheel', 'pyodide_wheel'):
+            commands.append(arg)
+        
+        elif arg in ('buildtest'):
+            commands += ['build', 'test']
+        
+        elif arg == 'install':
+            _pymupdf = next(args)
+            commands.append(f'{arg}.{_pymupdf}')
+        
         else:
-            assert 0, f'Unrecognised option: {arg=}.'
+            assert 0, f'Unrecognised option/command: {arg=}.'
     
-    if arg is None:
-        log(f'No command specified.')
-        return
-    
-    commands = list()
-    while 1:
-        assert arg in ('build', 'buildtest', 'test', 'wheel', 'pyodide_wheel'), \
-                f'Unrecognised command: {arg=}.'
-        commands.append(arg)
-        try:
-            arg = next(args)
-        except StopIteration:
-            break
-    
-    venv_quick = (venv==1)
-    
-    # Run inside a venv.
-    if venv and sys.prefix == sys.base_prefix:
-        # We are not running in a venv.
-        log(f'Re-running in venv {gh_release.venv_name!r}.')
-        gh_release.venv(
-                ['python'] + argv,
-                quick=venv_quick,
-                system_site_packages=system_site_packages,
-                )
+    # Handle special args --sync-paths, -h, -v, -o first.
+    #
+    if sync_paths:
+        # Just print required files, directories and checkouts.
+        if show_help:
+            return
+        print(pymupdf_dir)
+        if mupdf_sync:
+            print(mupdf_sync)
         return
 
-    def do_build(wheel=False):
-        if pymupdf_pypi:
-            run(f'pip install --force-reinstall {pymupdf_pypi}')
-        else:
+    if show_help:
+        print(__doc__)
+        return
+    
+    if os_names:
+        if platform.system().lower() not in os_names:
+            log(f'Not running because {platform.system().lower()=} not in {os_names=}')
+            return
+    
+    if commands:
+        if venv:
+            # Rerun ourselves inside a venv if not already in a venv.
+            if not venv_in():
+                e = venv_run(
+                        sys.argv,
+                        f'venv-pymupdf-{platform.python_version()}-{int.bit_length(sys.maxsize+1)}',
+                        )
+                sys.exit(e)
+    else:
+        log(f'Warning, no commands specified so nothing to do.')
+    
+    # Handle commands.
+    #
+    have_installed = False
+    for command in commands:
+        
+        if 0:
+            pass
+        
+        elif command in ('build', 'wheel'):
             build(
                     build_type=build_type,
                     build_isolation=build_isolation,
-                    venv_quick=venv_quick,
+                    venv=venv,
                     build_mupdf=build_mupdf,
                     build_flavour=build_flavour,
-                    wheel=wheel,
+                    wheel=(command=='wheel'),
                     )
-    def do_test():
-        test(
-                implementations=implementations,
-                valgrind=valgrind,
-                valgrind_args=valgrind_args,
-                venv_quick=venv_quick,
-                test_names=test_names,
-                pytest_options=pytest_options,
-                timeout=timeout,
-                gdb=gdb,
-                pytest_prefix=pytest_prefix,
-                test_fitz=test_fitz,
-                pytest_k=pytest_k,
-                pybind=pybind,
-                packages=packages,
-                )
-    
-    for command in commands:
-        if 0:
-            pass
-        elif command == 'build':
-            do_build()
+            have_installed = True
+        
+        elif command == 'cibw':
+            # Build wheel(s) with cibuildwheel.
+            run(f'pip install --upgrade cibuildwheel')
+
+            # Some general flags.
+            env_extra['CIBW_BUILD_VERBOSITY'] = '1'
+            env_extra['CIBW_SKIP'] = 'pp* *i686 cp36* cp37* *musllinux* *-win32 *-aarch64'
+
+            # Set what wheels to build, if not already specified.
+            if os.environ.get('CIBW_ARCHS') is None:
+                if os.environ.get('CIBW_ARCHS_WINDOWS') is None:
+                    env_extra['CIBW_ARCHS_WINDOWS'] = 'auto64'
+
+                if os.environ.get('CIBW_ARCHS_MACOS') is None:
+                    env_extra['CIBW_ARCHS_MACOS'] = 'auto64'
+
+                if os.environ.get('CIBW_ARCHS_LINUX') is None:
+                    env_extra['CIBW_ARCHS_LINUX'] = 'auto64'
+                    if os.environ.get('GITHUB_ACTIONS') == 'true':
+                        # Special case to use emulation/cross-compilation of
+                        # aarch64 on Linux.
+                        env_extra['CIBW_ARCHS_LINUX'] += ' aarch64'
+
+            # Tell cibuildwheel not to use `auditwheel` on Linux and MacOS,
+            # because it cannot cope with us deliberately having required
+            # libraries in different wheel - specifically in the PyMuPDF wheel.
+            #
+            # We cannot use a subset of auditwheel's functionality
+            # with `auditwheel addtag` because it says `No tags
+            # to be added` and terminates with non-zero. See:
+            # https://github.com/pypa/auditwheel/issues/439.
+            #
+            env_extra['CIBW_REPAIR_WHEEL_COMMAND_LINUX'] = ''
+            env_extra['CIBW_REPAIR_WHEEL_COMMAND_MACOS'] = ''
+
+            # Tell cibuildwheel how to test.
+            env_extra['CIBW_TEST_COMMAND'] = f'python {{project}}/scripts/test.py test'
+
+            # Specify python versions.
+            CIBW_BUILD = os.environ.get('CIBW_BUILD')
+            if CIBW_BUILD is None:
+                if os.environ.get('GITHUB_ACTIONS') == 'true':
+                    # Build/test all supported Python versions.
+                    CIBW_BUILD = os.environ.get('CIBW_BUILD', 'cp39* cp310* cp311* cp312* cp313*')
+                else:
+                    # Build/test current Python only.
+                    v = platform.python_version_tuple()[:2]
+                    CIBW_BUILD = f'cp{"".join(v)}*'
+
+            # Build for lowest (assumed first) Python version.
+            #
+            log(f'py_limited_api: building for first Python version.')
+            env_extra['CIBW_BUILD'] = CIBW_BUILD.split()[0]
+            run(f'cd {g_root_dir} && cibuildwheel', env_extra=env_extra)
+
+            # Pass all the environment variables we have set, to Linux
+            # docker. Note that this will miss any settings in the original
+            # environment.
+            env_extra['CIBW_ENVIRONMENT_PASS_LINUX'] = ' '.join(sorted(env_extra.keys()))
+
+            # Tell cibuildwheel to build and test all specified Python
+            # verisons; it will notice that the wheel we built above supports
+            # all versions of Python, so will not actually do any builds here.
+            #
+            env_extra['CIBW_BUILD'] = CIBW_BUILD
+            log(f'py_limited_api: building/testing for all Python versions {CIBW_BUILD=}.')
+            run(f'cd {g_root_dir} && cibuildwheel', env_extra=env_extra)
+            run(f'ls -ld {g_root_dir}/wheelhouse/*')
+        
+        elif command.startswith('install.'):
+            name = command.lstrip('install.')
+            run(f'pip install --force-reinstall {name}')
+            have_installed = True
+        
         elif command == 'test':
-            do_test()
-        elif command == 'buildtest':
-            do_build()
-            do_test()
-        elif command == 'wheel':
-            do_build(wheel=True)
+            if not have_installed:
+                log(f'## Warning: have not built/installed PyMuPDF; testing whatever is already installed.')
+            test(
+                    implementations=implementations,
+                    valgrind=valgrind,
+                    valgrind_args=valgrind_args,
+                    venv=venv,
+                    test_names=test_names,
+                    pytest_options=pytest_options,
+                    timeout=timeout,
+                    gdb=gdb,
+                    pytest_prefix=pytest_prefix,
+                    test_fitz=test_fitz,
+                    pytest_k=pytest_k,
+                    pybind=pybind,
+                    packages=packages,
+                    )
+        
         elif command == 'pyodide_wheel':
             build_pyodide_wheel(pyodide_build_version=pyodide_build_version)
+        
         else:
-            assert 0
+            assert 0, f'{command=}'
 
 
 def get_env_bool(name, default=0):
@@ -406,12 +577,13 @@ def venv_info(pytest_args=None):
 
 
 def build(
-        build_type=None,
-        build_isolation=None,
-        venv_quick=False,
-        build_mupdf=True,
-        build_flavour='pb',
-        wheel=False,
+        *,
+        build_type,
+        build_isolation,
+        venv,
+        build_mupdf,
+        build_flavour,
+        wheel,
         ):
     '''
     Args:
@@ -419,7 +591,7 @@ def build(
             See top-level option `-b`.
         build_isolation:
             See top-level option `--build-isolation`.
-        venv_quick:
+        venv:
             See top-level option `-v`.
         build_mupdf:
             See top-level option `build-mupdf`
@@ -446,10 +618,10 @@ def build(
         del sys.path[0]
         if names:
             names = ' '.join(names)
-            if venv_quick:
-                log(f'{venv_quick=}: Not installing packages with pip: {names}')
-            else:
+            if venv == 2:
                 run( f'python -m pip install --upgrade {names}')
+            else:
+                log(f'{venv=}: Not installing packages with pip: {names}')
         build_isolation_text = ' --no-build-isolation'
     
     env_extra = dict()
@@ -460,7 +632,10 @@ def build(
     if build_flavour:
         env_extra['PYMUPDF_SETUP_FLAVOUR'] = build_flavour
     if wheel:
+        new_files = NewFiles(f'wheelhouse/*.whl')
         run(f'pip wheel{build_isolation_text} -v {pymupdf_dir}', env_extra=env_extra)
+        wheel = newer_files.get_one()
+        run(f'pip install {wheel}')
     else:
         run(f'pip install{build_isolation_text} -v {pymupdf_dir}', env_extra=env_extra)
 
@@ -604,7 +779,7 @@ def test(
         implementations,
         valgrind,
         valgrind_args,
-        venv_quick=False,
+        venv=False,
         test_names=None,
         pytest_options=None,
         timeout=None,
@@ -623,7 +798,7 @@ def test(
             See top-level option `--valgrind`.
         valgrind_args:
             See top-level option `--valgrind-args`.
-        venv_quick:
+        venv:
             .
         test_names:
             See top-level option `-t`.
@@ -712,10 +887,10 @@ def test(
     python = gh_release.relpath(sys.executable)
     log('Running tests with tests/run_compound.py and pytest.')
     try:
-        if venv_quick:
-            log(f'{venv_quick=}: Not installing test packages: {gh_release.test_packages}')
-        else:
+        if venv == 2:
             run(f'pip install --upgrade {gh_release.test_packages}')
+        else:
+            log(f'{venv=}: Not installing test packages: {gh_release.test_packages}')
         run_compound_args = ''
         if implementations:
             run_compound_args += f' -i {implementations}'
@@ -793,6 +968,31 @@ def test(
         log('\n' + venv_info(pytest_args=f'{pytest_options} {pytest_arg}'))
 
 
+class NewFiles:
+    '''
+    Detects new files matching a glob pattern. Used to detect wheel created by
+    pip.
+    '''
+    def __init__(self, glob_pattern):
+        # Find current matches of <glob_pattern>.
+        self.glob_pattern = glob_pattern
+        self.items0 = set(glob.glob(self.glob_pattern))
+    def get(self):
+        '''
+        Returns lst of new matches of <glob_pattern>.
+        '''
+        items = set(glob.glob(self.glob_pattern))
+        return list(items - self.items0)
+    def get_one(self):
+        '''
+        Returns new match of <glob_pattern>, asserting that there is exactly
+        one.
+        '''
+        ret = self.get()
+        assert len(ret) == 1
+        return ret[0]
+
+
 def get_pyproject_required(ppt=None):
     '''
     Returns space-separated names of required packages in pyproject.toml.  We
@@ -829,6 +1029,43 @@ def wrap_get_requires_for_build_wheel(dir_):
         finally:
             del sys.path[0]
     return ' '.join(ret)
+
+
+def venv_in(path=None):
+    '''
+    If path is None, returns true if we are in a venv. Otherwise returns true
+    only if we are in venv <path>.
+    '''
+    if path:
+        return os.path.abspath(sys.prefix) == os.path.abspath(path)
+    else:
+        return sys.prefix != sys.base_prefix
+
+
+def venv_run(args, path, recreate=True):
+    '''
+    Runs command inside venv and returns termination code.
+    
+    Args:
+        args:
+            List of args.
+        path:
+            Name of venv.
+        recreate:
+            If false we do not run `<sys.executable> -m venv <path>` if <path>
+            already exists. This avoids a delay in the common case where <path>
+            is already set up, but fails if <path> exists but does not contain
+            a valid venv.
+    '''
+    if recreate or not os.path.isdir(path):
+        run(f'{sys.executable} -m venv {path}')
+    if platform.system() == 'Windows':
+        command = f'{path}\\Scripts\\activate'
+    else:
+        command = f'. {path}/bin/activate'
+    command += f' && python {shlex.join(args)}'
+    e = run(command, check=0)
+    return e
 
 
 if __name__ == '__main__':
