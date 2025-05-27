@@ -50,6 +50,23 @@ Options:
         'release', 'debug', 'memento'. [This makes `build` set environment
         variable `PYMUPDF_SETUP_MUPDF_BUILD_TYPE`, which is used by PyMuPDF's
         `setup.py`.]
+    --build-flavour <build_flavour>
+        Combination of 'p', 'b', 'd'. See ../setup.py's description of
+        PYMUPDF_SETUP_FLAVOUR. Default is 'pbd', i.e. self-contained PyMuPDF
+        wheels including MuPDF build-time files.
+    --build-isolation 0|1
+        If true (the default on non-OpenBSD systems), we let pip create and use
+        its own new venv to build PyMuPDF. Otherwise we force pip to use the
+        current venv.
+    --cibw-name <cibw_name>
+        Name to use when installing cibuildwheel, e.g.:
+            --cibw-name cibuildwheel==3.0.0b1
+        Default is `cibuildwheel`, i.e. the current release.
+    --cibw-pyodide 0|1
+         Experimental, make `cibuild` command build a pyodide wheel.
+         2025-05-27: this fails when building mupdf C API - `ld -r -b binary
+         ...` fails with:
+            emcc: error: binary: No such file or directory ("binary" was expected to be an input file, based on the commandline arguments provided)
     -d
         Equivalent to `-b debug`.
     -e <name>=<value>
@@ -57,6 +74,8 @@ Options:
         multiple times.
     -f 0|1
         If 1 we also test alias `fitz` as well as `pymupdf`. Default is '0'.
+    --gdb 0|1
+        Run tests under gdb. Requires user interaction.
     --help
     -h
         Show help.
@@ -74,41 +93,9 @@ Options:
         when building PyMuPDF. [This sets environment variable
         PYMUPDF_SETUP_MUPDF_BUILD, which is used by PyMuPDF/setup.py. If not
         specified PyMuPDF will download its default mupdf .tgz.]
-    -p <pytest-options>
-        Set pytest options; default is ''.
-    -P 0|1
-        If 1, automatically install required system packages such as
-        Valgrind. Default is 0.
-    -s 0 | 1
-        If 1 (the default), build with Python Limited API/Stable ABI.
-        [This simply sSets $PYMUPDF_SETUP_PY_LIMITED_API, which is used by
-        PyMuPDF/setup.py.]
-    -t <names>
-        Pytest test names, comma-separated. Should be relative to PyMuPDF
-        directory. For example:
-            -t tests/test_general.py
-            -t tests/test_general.py::test_subset_fonts
-        To specify multiple tests, use comma-separated list and/or multiple `-t
-        <names>` args.
-    -v 0|1|2
-        0 - do not use a venv.
-        1 - Use venv. If it already exists, we assume the existing directory
-            was created by us earlier and is a valid venv containing all
-            necessary packages; this saves a little time.
-        2 - use venv
-        The default is 2.
-    --build-flavour <build_flavour>
-        Combination of 'p', 'b', 'd'. See ../setup.py's description of
-        PYMUPDF_SETUP_FLAVOUR. Default is 'pbd', i.e. self-contained PyMuPDF
-        wheels including MuPDF build-time files.
-    --build-isolation 0|1
-        If true (the default on non-OpenBSD systems), we let pip create and use
-        its own new venv to build PyMuPDF. Otherwise we force pip to use the
-        current venv.
-    --build-mupdf 0|1 | -M 0|1
+    -M 0|1
+    --build-mupdf 0|1
         Whether to rebuild mupdf when we build PyMuPDF. Default is 1.
-    --gdb 0|1
-        Run tests under gdb. Requires user interaction.
     -o <os_names>
         Control whether we do nothing on the current platform.
         * <os_names> is a comma-separated list of names.
@@ -117,28 +104,47 @@ Options:
           insensitive) platform.system().
         * For example `-o linux,darwin` will do nothing unless on Linux or
           MacOS.
-    --pyodide-build-version <version>
-        Version of Python package pyodide-build; if None (the default) we use
-        latest available version.
-        2025-02-13: pyodide_build_version='0.29.3' works.
-    --pytest-prefix <command>
-        Use specified prefix when running pytest. E.g. `gdb --args`.
+    -p <pytest-options>
+        Set pytest options; default is ''.
+    -P 0|1
+        If 1, automatically install required system packages such as
+        Valgrind. Default is 0.
     --pybind 0|1
         Experimental, for investigating
         https://github.com/pymupdf/PyMuPDF/issues/3869. Runs run basic code
         inside C++ pybind. Requires `sudo apt install pybind11-dev` or similar.
-    --pymupdf-pypi <name>
-        Do not build PyMuPDF, instead install with `pip install <name>`. For
-        example allows testing of a specific version with `--pymupdf-pypi
-        pymupdf==x.y.z`.
+    --pyodide-build-version <version>
+        Version of Python package pyodide-build; if None (the default) we use
+        latest available version.
+        2025-02-13: pyodide_build_version='0.29.3' works.
+    -s 0 | 1
+        If 1 (the default), build with Python Limited API/Stable ABI.
+        [This simply sSets $PYMUPDF_SETUP_PY_LIMITED_API, which is used by
+        PyMuPDF/setup.py.]
     --sync-paths
         Do not run anything, instead write required files/directories/checkouts
         to stdout, one per line. This is to help with automated running on
         remote machines.
     --system-site-packages 0|1
         If 1, use `--system-site-packages` when creating venv. Defaults is 0.
+    -t <names>
+        Pytest test names, comma-separated. Should be relative to PyMuPDF
+        directory. For example:
+            -t tests/test_general.py
+            -t tests/test_general.py::test_subset_fonts
+        To specify multiple tests, use comma-separated list and/or multiple `-t
+        <names>` args.
     --timeout <seconds>
         Sets timeout when running tests.
+    -T <command> | --pytest-prefix <command>
+        Use specified prefix when running pytest. E.g. `gdb --args`.
+    -v 0|1|2
+        0 - do not use a venv.
+        1 - Use venv. If it already exists, we assume the existing directory
+            was created by us earlier and is a valid venv containing all
+            necessary packages; this saves a little time.
+        2 - use venv
+        The default is 2.
     --valgrind 0|1
         Use valgrind in `test` or `buildtest`.
         This will run `sudo apt update` and `sudo apt install valgrind`.
@@ -224,6 +230,8 @@ def main(argv):
         return
     
     build_isolation = None
+    cibw_name = 'cibuildwheel'
+    cibw_pyodide = None
     commands = list()
     env_extra = dict()
     implementations = 'r'
@@ -247,7 +255,8 @@ def main(argv):
     options = os.environ.get('PYMUDF_SCRIPTS_TEST_options', '')
     options = shlex.split(options)
     
-    # Parse args and update the above state.
+    # Parse args and update the above state. We do this before moving into a
+    # venv, partly so we can return errors immediately.
     #
     args = iter(options + argv[1:])
     i = 0
@@ -270,8 +279,17 @@ def main(argv):
         elif arg == '-b':
             env_extra['PYMUPDF_SETUP_MUPDF_BUILD_TYPE'] = next(args)
         
+        elif arg == '--build-flavour':
+            env_extra['PYMUPDF_SETUP_FLAVOUR'] = next(args)
+        
         elif arg == '--build-isolation':
             build_isolation = int(next(args))
+        
+        elif arg == '--cibw-name':
+            cibw_name = next(args)
+        
+        elif arg == '--cibw-pyodide':
+            cibw_pyodide = next(args)
         
         elif arg == '-d':
             env_extra['PYMUPDF_SETUP_MUPDF_BUILD_TYPE'] = 'debug'
@@ -285,13 +303,22 @@ def main(argv):
         elif arg == '-f':
             test_fitz = int(next(args))
         
+        elif arg == '--gdb':
+            _gdb = int(next(args))
+            if _gdb == 1:
+                pytest_prefix = 'gdb'
+            warnings += f'{arg=} is deprecated, use `-T gdb`.'
+        
         elif arg in ('-h', '--help'):
             show_help = True
         
         elif arg == '-i':
             implementations = next(args)
         
-        elif arg in ('--mupdf', '-m'):
+        elif arg == '-k':
+            pytest_options += f' -k {shlex.quote(next(args))}'
+        
+        elif arg in ('-m', '--mupdf'):
             _mupdf = next(args)
             if _mupdf == '-':
                 _mupdf = None
@@ -302,8 +329,8 @@ def main(argv):
                 os.environ['PYMUPDF_SETUP_MUPDF_BUILD'] = os.path.abspath(_mupdf)
                 mupdf_sync = _mupdf
         
-        elif arg == '-k':
-            pytest_options += f' -k {shlex.quote(next(args))}'
+        elif arg in ('-M', '--build-mupdf'):
+            env_extra['PYMUPDF_SETUP_MUPDF_REBUILD'] = next(args)
         
         elif arg == '-o':
             os_names += next(args).split(',')
@@ -317,10 +344,16 @@ def main(argv):
         elif arg == '--pybind':
             pybind = int(next(args))
         
+        elif arg == '--pyodide-build-version':
+            pyodide_build_version = next(args)
+        
         elif arg == '-s':
             _value = next(args)
             assert _value in ('0', '1'), f'`-s` must be followed by `0` or `1`, not {_value=}.'
             env_extra['PYMUPDF_SETUP_PY_LIMITED_API'] = _value
+        
+        elif arg == '--sync-paths':
+            sync_paths = True
         
         elif arg == '--system-site-packages':
             system_site_packages = int(next(args))
@@ -338,34 +371,16 @@ def main(argv):
             venv = int(next(args))
             assert venv in (0, 1, 2), f'Invalid {venv=} should be 0, 1 or 2.'
         
-        elif arg == '--build-flavour':
-            env_extra['PYMUPDF_SETUP_FLAVOUR'] = next(args)
-        
-        elif arg in ('-M', '--build-mupdf'):
-            env_extra['PYMUPDF_SETUP_MUPDF_REBUILD'] = next(args)
-        
-        elif arg == '--gdb':
-            _gdb = int(next(args))
-            if _gdb == 1:
-                pytest_prefix = 'gdb'
-            warnings += f'{arg=} is deprecated, use `-T gdb`.'
-        
         elif arg == '--valgrind':
             _valgrind = int(next(args))
             if _valgrind == 1:
                 pytest_prefix = 'valgrind'
             warnings += f'{arg=} is deprecated, use `-T _valgrind`.'
         
-        elif arg == '--pyodide-build-version':
-            pyodide_build_version = next(args)
-        
-        elif arg == '--sync-paths':
-            sync_paths = True
-        
-        elif arg in ('build', 'cibw', 'test', 'wheel', 'pyodide'):
+        elif arg in ('build', 'cibw', 'pyodide', 'test', 'wheel'):
             commands.append(arg)
         
-        elif arg in ('buildtest'):
+        elif arg == 'buildtest':
             commands += ['build', 'test']
         
         elif arg == 'install':
@@ -426,7 +441,7 @@ def main(argv):
         
         elif command == 'cibw':
             # Build wheel(s) with cibuildwheel.
-            cibuildwheel(env_extra)
+            cibuildwheel(env_extra, cibw_name, cibw_pyodide)
         
         elif command.startswith('install.'):
             name = command.lstrip('install.')
@@ -562,8 +577,8 @@ def build(
         run(f'pip install{build_isolation_text} -v {pymupdf_dir}', env_extra=env_extra)
 
 
-def cibuildwheel(env_extra):
-    run(f'pip install --upgrade cibuildwheel')
+def cibuildwheel(env_extra, cibw_name, cibw_pyodide):
+    run(f'pip install --upgrade {cibw_name}')
 
     # Some general flags.
     env_extra['CIBW_BUILD_VERBOSITY'] = '1'
@@ -619,17 +634,18 @@ def cibuildwheel(env_extra):
 
     # Build for lowest (assumed first) Python version.
     #
+    cibw_pyodide_arg = ' --platform pyodide' if cibw_pyodide else ''
     CIBW_BUILD_0 = CIBW_BUILD.split()[0]
     log(f'Building for first Python version {CIBW_BUILD_0}.')
     env_extra['CIBW_BUILD'] = CIBW_BUILD_0
-    run(f'cd {pymupdf_dir} && cibuildwheel', env_extra=env_extra)
+    run(f'cd {pymupdf_dir} && cibuildwheel{cibw_pyodide_arg}', env_extra=env_extra)
 
     # Tell cibuildwheel to build and test all specified Python versions; it
     # will notice that the wheel we built above supports all versions of
     # Python, so will not actually do any builds here.
     #
     env_extra['CIBW_BUILD'] = CIBW_BUILD
-    run(f'cd {pymupdf_dir} && cibuildwheel', env_extra=env_extra)
+    run(f'cd {pymupdf_dir} && cibuildwheel{cibw_pyodide_arg}', env_extra=env_extra)
     run(f'ls -ld {pymupdf_dir}/wheelhouse/*')
         
 
