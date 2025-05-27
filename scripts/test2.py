@@ -22,7 +22,7 @@ Usage:
 
 * Command line arguments are called parameters if they start with `-`,
   otherwise they are called commands.
-* Parameters are evaluated first in the oder that they were specified.
+* Parameters are evaluated first in the order that they were specified.
 * Then commands are run in the order in which they were specified.
 * Usually `test` would be specified after `build`, `install` or `wheel`.
 * Parameters and commands can be interleaved but it may be clearer to group
@@ -651,7 +651,7 @@ def main():
             env_extra['CIBW_ENVIRONMENT_PASS_LINUX'] = ' '.join(sorted(env_extra.keys()))
 
             # Tell cibuildwheel to build and test all specified Python
-            # verisons; it will notice that the wheel we built above supports
+            # versions; it will notice that the wheel we built above supports
             # all versions of Python, so will not actually do any builds here.
             #
             env_extra['CIBW_BUILD'] = CIBW_BUILD
