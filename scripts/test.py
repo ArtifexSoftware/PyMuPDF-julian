@@ -4,7 +4,7 @@
 
 Examples:
 
-    ./PyMuPDF/scripts/test.py --mupdf mupdf buildtest
+    ./PyMuPDF/scripts/test.py --m mupdf build test
         Build and test with pre-existing local mupdf/ checkout.
 
     ./PyMuPDF/scripts/test.py buildtest
@@ -17,17 +17,22 @@ Examples:
         Build and test using internal checkout of mupdf 1.26.x branch from Github.
 
 Usage:
-    scripts/test.py <options> <command(s)>
 
-* Commands are handled in order, so for example `build` should usually be
-  before `test`.
+* Command line arguments are called parameters if they start with `-`,
+  otherwise they are called commands.
+* Parameters are evaluated first in the order that they were specified.
+* Then commands are run in the order in which they were specified.
+* Usually command `test` would be specified after a `build`, `install` or
+  `wheel` command.
+* Parameters and commands can be interleaved but it may be clearer to separate
+  them on the command line.
+
+Other:
 
 * If we are not already running inside a Python venv, we automatically create a
   venv and re-run ourselves inside it.
-
-* We build directly with pip (unlike gh_release.py, which builds with
-  cibuildwheel).
-
+* Build/wheel/install commands always install into the venv.
+* Tests use whatever PyMuPDF is currently installed in the venv.
 * We run tests with pytest.
 
 * One can generate call traces by setting environment variables in debug
@@ -41,12 +46,15 @@ Options:
         * Does nothing if <env_name> is unset.
         * Useful when running via Github action.
     -b <build>
-        Set build type for `build` or `buildtest` commands. `<build>` should
-        be one of 'release', 'debug', 'memento'. [This makes `build` set
-        environment variable `PYMUPDF_SETUP_MUPDF_BUILD_TYPE`, which is used by
-        PyMuPDF's `setup.py`.]
+        Set build type for `build` commands. `<build>` should be one of
+        'release', 'debug', 'memento'. [This makes `build` set environment
+        variable `PYMUPDF_SETUP_MUPDF_BUILD_TYPE`, which is used by PyMuPDF's
+        `setup.py`.]
     -d
         Equivalent to `-b debug`.
+    -e <name>=<value>
+        Add to environment used in build and test commands. Can be specified
+        multiple times.
     -f 0|1
         If 1 we also test alias `fitz` as well as `pymupdf`. Default is '0'.
     --help
@@ -69,10 +77,12 @@ Options:
     -p <pytest-options>
         Set pytest options; default is ''.
     -P 0|1
-        If 1, automatically install required packages such as Valgrind. Default
-        is 0.
+        If 1, automatically install required system packages such as
+        Valgrind. Default is 0.
     -s 0 | 1
         If 1 (the default), build with Python Limited API/Stable ABI.
+        [This simply sSets $PYMUPDF_SETUP_PY_LIMITED_API, which is used by
+        PyMuPDF/setup.py.]
     -t <names>
         Pytest test names, comma-separated. Should be relative to PyMuPDF
         directory. For example:
@@ -107,6 +117,10 @@ Options:
           insensitive) platform.system().
         * For example `-o linux,darwin` will do nothing unless on Linux or
           MacOS.
+    --pyodide-build-version <version>
+        Version of Python package pyodide-build; if None (the default) we use
+        latest available version.
+        2025-02-13: pyodide_build_version='0.29.3' works.
     --pytest-prefix <command>
         Use specified prefix when running pytest. E.g. `gdb --args`.
     --pybind 0|1
@@ -128,8 +142,6 @@ Options:
     --valgrind 0|1
         Use valgrind in `test` or `buildtest`.
         This will run `sudo apt update` and `sudo apt install valgrind`.
-    --valgrind-args <valgrind_args>
-        Extra args to valgrind.
 
 Commands:
     build
@@ -155,7 +167,7 @@ Commands:
         as of 2025-05-23 because there is no native aarch64 host available.
     install <pymupdf>
         Install with `pip install --force-reinstall <pymupdf>`.
-    pyodide_wheel
+    pyodide
         Build Pyodide wheel. We clone `emsdk.git`, set it up, and run
         `pyodide build`. This runs our setup.py with CC etc set up
         to create Pyodide binaries in a wheel called, for example,
@@ -211,31 +223,25 @@ def main(argv):
         show_help()
         return
     
-    build_flavour = 'pbd'
     build_isolation = None
-    build_mupdf = True
-    build_type = None
     commands = list()
-    gdb = False
+    env_extra = dict()
     implementations = 'r'
     mupdf_sync = None
     os_names = list()
-    packages = False
+    system_packages = False
     pybind = False
-    pymupdf_pypi = None
     pyodide_build_version = None
-    pytest_k = None
-    pytest_options = None
+    pytest_options = ''
     pytest_prefix = None
-    s = True
     show_help = False
     sync_paths = False
     system_site_packages = False
     test_fitz = False
     test_names = list()
-    timeout = None
+    test_timeout = None
     valgrind = False
-    valgrind_args = ''
+    warnings = list()
     venv = 2
     
     options = os.environ.get('PYMUDF_SCRIPTS_TEST_options', '')
@@ -262,13 +268,19 @@ def main(argv):
             args = iter(_args)
         
         elif arg == '-b':
-            build_type = next(args)
+            env_extra['PYMUPDF_SETUP_MUPDF_BUILD_TYPE'] = next(args)
         
         elif arg == '--build-isolation':
             build_isolation = int(next(args))
         
         elif arg == '-d':
-            build_type = 'debug'
+            env_extra['PYMUPDF_SETUP_MUPDF_BUILD_TYPE'] = 'debug'
+        
+        elif arg == '-e':
+            _nv = next(args)
+            assert '=' in _nv, f'-e <name>=<value> does not contain "=": {_nv!r}'
+            _name, _value = _nv.split('=', 1)
+            env_extra[_name] = _value
         
         elif arg == '-f':
             test_fitz = int(next(args))
@@ -291,27 +303,24 @@ def main(argv):
                 mupdf_sync = _mupdf
         
         elif arg == '-k':
-            pytest_k = next(args)
+            pytest_options += f' -k {shlex.quote(next(args))}'
         
         elif arg == '-o':
             os_names += next(args).split(',')
         
         elif arg == '-p':
-            pytest_options = next(args)
+            pytest_options += f' {next(args)}'
         
         elif arg == '-P':
-            packages = int(next(args))
-        
-        elif arg == '-s':
-            value = next(args)
-            assert value in ('0', '1'), f'`-s` must be followed by `0` or `1`, not {value=}.'
-            os.environ['PYMUPDF_SETUP_PY_LIMITED_API'] = value
-        
-        elif arg == '--pytest-prefix':
-            pytest_prefix = next(args)
+            system_packages = int(next(args))
         
         elif arg == '--pybind':
             pybind = int(next(args))
+        
+        elif arg == '-s':
+            _value = next(args)
+            assert _value in ('0', '1'), f'`-s` must be followed by `0` or `1`, not {_value=}.'
+            env_extra['PYMUPDF_SETUP_PY_LIMITED_API'] = _value
         
         elif arg == '--system-site-packages':
             system_site_packages = int(next(args))
@@ -320,36 +329,40 @@ def main(argv):
             test_names += next(args).split(',')
         
         elif arg == '--timeout':
-            timeout = float(next(args))
+            test_timeout = float(next(args))
+        
+        elif arg in ('-T', '--pytest-prefix'):
+            pytest_prefix = next(args)
         
         elif arg == '-v':
             venv = int(next(args))
+            assert venv in (0, 1, 2), f'Invalid {venv=} should be 0, 1 or 2.'
         
         elif arg == '--build-flavour':
-            build_flavour = next(args)
+            env_extra['PYMUPDF_SETUP_FLAVOUR'] = next(args)
         
         elif arg in ('-M', '--build-mupdf'):
-            build_mupdf = int(next(args))
+            env_extra['PYMUPDF_SETUP_MUPDF_REBUILD'] = next(args)
         
         elif arg == '--gdb':
-            gdb = int(next(args))
+            _gdb = int(next(args))
+            if _gdb == 1:
+                pytest_prefix = 'gdb'
+            warnings += f'{arg=} is deprecated, use `-T gdb`.'
         
         elif arg == '--valgrind':
-            valgrind = int(next(args))
-        
-        elif arg == '--valgrind-args':
-            valgrind_args = next(args)
+            _valgrind = int(next(args))
+            if _valgrind == 1:
+                pytest_prefix = 'valgrind'
+            warnings += f'{arg=} is deprecated, use `-T _valgrind`.'
         
         elif arg == '--pyodide-build-version':
             pyodide_build_version = next(args)
         
-        elif arg == '--pymupdf-pypi':
-            pymupdf_pypi = next(args)
-        
         elif arg == '--sync-paths':
             sync_paths = True
         
-        elif arg in ('build', 'cibw', 'test', 'wheel', 'pyodide_wheel'):
+        elif arg in ('build', 'cibw', 'test', 'wheel', 'pyodide'):
             commands.append(arg)
         
         elif arg in ('buildtest'):
@@ -404,83 +417,16 @@ def main(argv):
         
         elif command in ('build', 'wheel'):
             build(
-                    build_type=build_type,
+                    env_extra,
                     build_isolation=build_isolation,
                     venv=venv,
-                    build_mupdf=build_mupdf,
-                    build_flavour=build_flavour,
                     wheel=(command=='wheel'),
                     )
             have_installed = True
         
         elif command == 'cibw':
             # Build wheel(s) with cibuildwheel.
-            run(f'pip install --upgrade cibuildwheel')
-
-            # Some general flags.
-            env_extra['CIBW_BUILD_VERBOSITY'] = '1'
-            env_extra['CIBW_SKIP'] = 'pp* *i686 cp36* cp37* *musllinux* *-win32 *-aarch64'
-
-            # Set what wheels to build, if not already specified.
-            if os.environ.get('CIBW_ARCHS') is None:
-                if os.environ.get('CIBW_ARCHS_WINDOWS') is None:
-                    env_extra['CIBW_ARCHS_WINDOWS'] = 'auto64'
-
-                if os.environ.get('CIBW_ARCHS_MACOS') is None:
-                    env_extra['CIBW_ARCHS_MACOS'] = 'auto64'
-
-                if os.environ.get('CIBW_ARCHS_LINUX') is None:
-                    env_extra['CIBW_ARCHS_LINUX'] = 'auto64'
-                    if os.environ.get('GITHUB_ACTIONS') == 'true':
-                        # Special case to use emulation/cross-compilation of
-                        # aarch64 on Linux.
-                        env_extra['CIBW_ARCHS_LINUX'] += ' aarch64'
-
-            # Tell cibuildwheel not to use `auditwheel` on Linux and MacOS,
-            # because it cannot cope with us deliberately having required
-            # libraries in different wheel - specifically in the PyMuPDF wheel.
-            #
-            # We cannot use a subset of auditwheel's functionality
-            # with `auditwheel addtag` because it says `No tags
-            # to be added` and terminates with non-zero. See:
-            # https://github.com/pypa/auditwheel/issues/439.
-            #
-            env_extra['CIBW_REPAIR_WHEEL_COMMAND_LINUX'] = ''
-            env_extra['CIBW_REPAIR_WHEEL_COMMAND_MACOS'] = ''
-
-            # Tell cibuildwheel how to test.
-            env_extra['CIBW_TEST_COMMAND'] = f'python {{project}}/scripts/test.py test'
-
-            # Specify python versions.
-            CIBW_BUILD = os.environ.get('CIBW_BUILD')
-            if CIBW_BUILD is None:
-                if os.environ.get('GITHUB_ACTIONS') == 'true':
-                    # Build/test all supported Python versions.
-                    CIBW_BUILD = os.environ.get('CIBW_BUILD', 'cp39* cp310* cp311* cp312* cp313*')
-                else:
-                    # Build/test current Python only.
-                    v = platform.python_version_tuple()[:2]
-                    CIBW_BUILD = f'cp{"".join(v)}*'
-
-            # Build for lowest (assumed first) Python version.
-            #
-            log(f'py_limited_api: building for first Python version.')
-            env_extra['CIBW_BUILD'] = CIBW_BUILD.split()[0]
-            run(f'cd {g_root_dir} && cibuildwheel', env_extra=env_extra)
-
-            # Pass all the environment variables we have set, to Linux
-            # docker. Note that this will miss any settings in the original
-            # environment.
-            env_extra['CIBW_ENVIRONMENT_PASS_LINUX'] = ' '.join(sorted(env_extra.keys()))
-
-            # Tell cibuildwheel to build and test all specified Python
-            # verisons; it will notice that the wheel we built above supports
-            # all versions of Python, so will not actually do any builds here.
-            #
-            env_extra['CIBW_BUILD'] = CIBW_BUILD
-            log(f'py_limited_api: building/testing for all Python versions {CIBW_BUILD=}.')
-            run(f'cd {g_root_dir} && cibuildwheel', env_extra=env_extra)
-            run(f'ls -ld {g_root_dir}/wheelhouse/*')
+            cibuildwheel(env_extra)
         
         elif command.startswith('install.'):
             name = command.lstrip('install.')
@@ -491,22 +437,19 @@ def main(argv):
             if not have_installed:
                 log(f'## Warning: have not built/installed PyMuPDF; testing whatever is already installed.')
             test(
+                    env_extra=env_extra,
                     implementations=implementations,
-                    valgrind=valgrind,
-                    valgrind_args=valgrind_args,
-                    venv=venv,
                     test_names=test_names,
                     pytest_options=pytest_options,
-                    timeout=timeout,
-                    gdb=gdb,
+                    test_timeout=test_timeout,
                     pytest_prefix=pytest_prefix,
                     test_fitz=test_fitz,
-                    pytest_k=pytest_k,
                     pybind=pybind,
-                    packages=packages,
+                    system_packages=system_packages,
+                    venv=venv,
                     )
         
-        elif command == 'pyodide_wheel':
+        elif command == 'pyodide':
             build_pyodide_wheel(pyodide_build_version=pyodide_build_version)
         
         else:
@@ -577,26 +520,12 @@ def venv_info(pytest_args=None):
 
 
 def build(
+        env_extra,
         *,
-        build_type,
         build_isolation,
         venv,
-        build_mupdf,
-        build_flavour,
         wheel,
         ):
-    '''
-    Args:
-        build_type:
-            See top-level option `-b`.
-        build_isolation:
-            See top-level option `--build-isolation`.
-        venv:
-            See top-level option `-v`.
-        build_mupdf:
-            See top-level option `build-mupdf`
-    '''
-    print(f'{build_type=}')
     print(f'{build_isolation=}')
     
     if build_isolation is None:
@@ -624,13 +553,6 @@ def build(
                 log(f'{venv=}: Not installing packages with pip: {names}')
         build_isolation_text = ' --no-build-isolation'
     
-    env_extra = dict()
-    if not build_mupdf:
-        env_extra['PYMUPDF_SETUP_MUPDF_REBUILD'] = '0'
-    if build_type:
-        env_extra['PYMUPDF_SETUP_MUPDF_BUILD_TYPE'] = build_type
-    if build_flavour:
-        env_extra['PYMUPDF_SETUP_FLAVOUR'] = build_flavour
     if wheel:
         new_files = NewFiles(f'wheelhouse/*.whl')
         run(f'pip wheel{build_isolation_text} -v {pymupdf_dir}', env_extra=env_extra)
@@ -639,6 +561,77 @@ def build(
     else:
         run(f'pip install{build_isolation_text} -v {pymupdf_dir}', env_extra=env_extra)
 
+
+def cibuildwheel(env_extra):
+    run(f'pip install --upgrade cibuildwheel')
+
+    # Some general flags.
+    env_extra['CIBW_BUILD_VERBOSITY'] = '1'
+    env_extra['CIBW_SKIP'] = 'pp* *i686 cp36* cp37* *musllinux* *-win32 *-aarch64'
+
+    # Set what wheels to build, if not already specified.
+    if os.environ.get('CIBW_ARCHS') is None:
+        if os.environ.get('CIBW_ARCHS_WINDOWS') is None:
+            env_extra['CIBW_ARCHS_WINDOWS'] = 'auto64'
+
+        if os.environ.get('CIBW_ARCHS_MACOS') is None:
+            env_extra['CIBW_ARCHS_MACOS'] = 'auto64'
+
+        if os.environ.get('CIBW_ARCHS_LINUX') is None:
+            env_extra['CIBW_ARCHS_LINUX'] = 'auto64'
+            if os.environ.get('GITHUB_ACTIONS') == 'true':
+                # Special case to use emulation/cross-compilation of
+                # aarch64 on Linux.
+                env_extra['CIBW_ARCHS_LINUX'] += ' aarch64'
+
+    # Tell cibuildwheel not to use `auditwheel` on Linux and MacOS,
+    # because it cannot cope with us deliberately having required
+    # libraries in different wheel - specifically in the PyMuPDF wheel.
+    #
+    # We cannot use a subset of auditwheel's functionality
+    # with `auditwheel addtag` because it says `No tags
+    # to be added` and terminates with non-zero. See:
+    # https://github.com/pypa/auditwheel/issues/439.
+    #
+    env_extra['CIBW_REPAIR_WHEEL_COMMAND_LINUX'] = ''
+    env_extra['CIBW_REPAIR_WHEEL_COMMAND_MACOS'] = ''
+
+    # Tell cibuildwheel how to test.
+    env_extra['CIBW_TEST_COMMAND'] = f'python {{project}}/scripts/test.py test'
+
+    # Specify python versions.
+    CIBW_BUILD = os.environ.get('CIBW_BUILD')
+    log(f'{CIBW_BUILD=}')
+    if CIBW_BUILD is None:
+        if os.environ.get('GITHUB_ACTIONS') == 'true':
+            # Build/test all supported Python versions.
+            CIBW_BUILD = os.environ.get('CIBW_BUILD', 'cp39* cp310* cp311* cp312* cp313*')
+        else:
+            # Build/test current Python only.
+            v = platform.python_version_tuple()[:2]
+            log(f'{v=}')
+            CIBW_BUILD = f'cp{"".join(v)}*'
+
+    # Pass all the environment variables we have set, to Linux
+    # docker. Note that this will miss any settings in the original
+    # environment.
+    env_extra['CIBW_ENVIRONMENT_PASS_LINUX'] = ' '.join(sorted(env_extra.keys()))
+
+    # Build for lowest (assumed first) Python version.
+    #
+    CIBW_BUILD_0 = CIBW_BUILD.split()[0]
+    log(f'Building for first Python version {CIBW_BUILD_0}.')
+    env_extra['CIBW_BUILD'] = CIBW_BUILD_0
+    run(f'cd {pymupdf_dir} && cibuildwheel', env_extra=env_extra)
+
+    # Tell cibuildwheel to build and test all specified Python versions; it
+    # will notice that the wheel we built above supports all versions of
+    # Python, so will not actually do any builds here.
+    #
+    env_extra['CIBW_BUILD'] = CIBW_BUILD
+    run(f'cd {pymupdf_dir} && cibuildwheel', env_extra=env_extra)
+    run(f'ls -ld {g_root_dir}/wheelhouse/*')
+        
 
 def build_pyodide_wheel(pyodide_build_version=None):
     '''
@@ -775,42 +768,19 @@ def pyodide_setup(
     return command
 
 
-def test(
+def test(*,
+        env_extra,
         implementations,
-        valgrind,
-        valgrind_args,
         venv=False,
         test_names=None,
         pytest_options=None,
-        timeout=None,
-        gdb=False,
+        test_timeout=None,
         pytest_prefix=None,
         test_fitz=True,
         pytest_k=None,
         pybind=False,
-        packages=False,
+        system_packages=False,
         ):
-    '''
-    Args:
-        implementations:
-            See top-level option `-i`.
-        valgrind:
-            See top-level option `--valgrind`.
-        valgrind_args:
-            See top-level option `--valgrind-args`.
-        venv:
-            .
-        test_names:
-            See top-level option `-t`.
-        pytest_options:
-            See top-level option `-p`.
-        gdb:
-            See top-level option `--gdb`.
-        pytest_prefix:
-            See top-level option `--pytest-prefix`.
-        test_fitz:
-            See top-level option `-f`.
-    '''
     if pybind:
         cpp_path = 'pymupdf_test_pybind.cpp'
         cpp_exe = 'pymupdf_test_pybind.exe'
@@ -886,73 +856,95 @@ def test(
         pytest_arg += f' {pymupdf_dir_rel}'
     python = gh_release.relpath(sys.executable)
     log('Running tests with tests/run_compound.py and pytest.')
-    try:
-        if venv == 2:
-            run(f'pip install --upgrade {gh_release.test_packages}')
-        else:
-            log(f'{venv=}: Not installing test packages: {gh_release.test_packages}')
-        run_compound_args = ''
-        if implementations:
-            run_compound_args += f' -i {implementations}'
-        if timeout:
-            run_compound_args += f' -t {timeout}'
-        env_extra = None
-        if valgrind:
-            if packages:
-                log('Installing valgrind.')
-                run(f'sudo apt update')
-                run(f'sudo apt install --upgrade valgrind')
-            run(f'valgrind --version')
-        
-            log('Running PyMuPDF tests under valgrind.')
-            command = (
-                    f'{python} {pymupdf_dir_rel}/tests/run_compound.py{run_compound_args}'
-                        f' valgrind --suppressions={pymupdf_dir_rel}/valgrind.supp --error-exitcode=100 --errors-for-leak-kinds=none --fullpath-after= {valgrind_args}'
-                        f' {python} -m pytest {pytest_options}{pytest_arg}'
-                        )
-            env_extra=dict(
-                    PYTHONMALLOC='malloc',
-                    PYMUPDF_RUNNING_ON_VALGRIND='1',
+    
+    if venv == 2:
+        run(f'pip install --upgrade {gh_release.test_packages}')
+    else:
+        log(f'{venv=}: Not installing test packages: {gh_release.test_packages}')
+    run_compound_args = ''
+    
+    if implementations:
+        run_compound_args += f' -i {implementations}'
+    
+    if test_timeout:
+        run_compound_args += f' -t {test_timeout}'
+
+    if pytest_prefix in ('valgrind', 'helgrind'):
+        if system_packages:
+            log('Installing valgrind.')
+            run(f'sudo apt update')
+            run(f'sudo apt install --upgrade valgrind')
+        run(f'valgrind --version')
+
+    command = f'{python} {pymupdf_dir_rel}/tests/run_compound.py{run_compound_args}'
+    
+    if pytest_prefix is None:
+        pass
+    elif pytest_prefix == 'gdb':
+        command += ' gdb --args'
+    elif pytest_prefix == 'valgrind':
+        env_extra['PYMUPDF_RUNNING_ON_VALGRIND'] = '1'
+        env_extra['PYTHONMALLOC'] = 'malloc'
+        command += (
+                    f' valgrind'
+                    f' --suppressions={g_root_dir_abs}/valgrind.supp'
+                    f' --trace-children=yes'
+                    f' --num-callers=20'
+                    f' --error-exitcode=100'
+                    f' --errors-for-leak-kinds=none'
+                    f' --fullpath-after='
                     )
-        elif gdb:
-            command = f'{python} {pymupdf_dir_rel}/tests/run_compound.py{run_compound_args} gdb --args {python} -m pytest {pytest_options} {pytest_arg}'
-        elif pytest_prefix:
-            command = f'{python} {pymupdf_dir_rel}/tests/run_compound.py{run_compound_args} {pytest_prefix} {python} -m pytest {pytest_options} {pytest_arg}'
-        elif platform.system() == 'Windows':
-            # `python -m pytest` doesn't seem to work.
-           command = f'{python} {pymupdf_dir_rel}/tests/run_compound.py{run_compound_args} pytest {pytest_options} {pytest_arg}'
-        else:
-            # On OpenBSD `pip install pytest` doesn't seem to install the pytest
-            # command, so we use `python -m pytest ...`.
-            command = f'{python} {pymupdf_dir_rel}/tests/run_compound.py{run_compound_args} {python} -m pytest {pytest_options} {pytest_arg}'
-        
-        # Always start by removing any test_*_fitz.py files.
-        for p in glob.glob(f'{pymupdf_dir_rel}/tests/test_*_fitz.py'):
-            print(f'Removing {p=}')
-            os.remove(p)
-        if test_fitz:
-            # Create copies of each test file, modified to use `pymupdf`
-            # instead of `fitz`.
-            for p in glob.glob(f'{pymupdf_dir_rel}/tests/test_*.py'):
-                if os.path.basename(p).startswith('test_fitz_'):
-                    # Don't recursively generate test_fitz_fitz_foo.py,
-                    # test_fitz_fitz_fitz_foo.py, ... etc.
-                    continue
-                branch, leaf = os.path.split(p)
-                p2 = f'{branch}/{leaf[:5]}fitz_{leaf[5:]}'
-                print(f'Converting {p=} to {p2=}.')
-                with open(p, encoding='utf8') as f:
-                    text = f.read()
-                text2 = re.sub("([^\'])\\bpymupdf\\b", '\\1fitz', text)
-                if p.replace(os.sep, '/') == f'{pymupdf_dir_rel}/tests/test_docs_samples.py'.replace(os.sep, '/'):
-                    assert text2 == text
-                else:
-                    assert text2 != text, f'Unexpectedly unchanged when creating {p!r} => {p2!r}'
-                with open(p2, 'w', encoding='utf8') as f:
-                    f.write(text2)
-        
+    elif pytest_prefix == 'helgrind':
+        env_extra['PYMUPDF_RUNNING_ON_VALGRIND'] = '1'
+        env_extra['PYTHONMALLOC'] = 'malloc'
+        command = (
+                f' valgrind'
+                f' --tool=helgrind'
+                f' --trace-children=yes'
+                f' --num-callers=20'
+                f' --error-exitcode=100'
+                f' --fullpath-after='
+                )
+    else:
+        assert 0, f'Unrecognised {pytest_prefix=}'
+
+    if platform.system() == 'Windows':
+        # `python -m pytest` doesn't seem to work.
+        command += ' pytest'
+    else:
+        # On OpenBSD `pip install pytest` doesn't seem to install the pytest
+        # command, so we use `python -m pytest ...`.
+        command += f' {python} -m pytest'
+
+    command += f' {pytest_options} {pytest_arg}'
+
+    # Always start by removing any test_*_fitz.py files.
+    for p in glob.glob(f'{pymupdf_dir_rel}/tests/test_*_fitz.py'):
+        print(f'Removing {p=}')
+        os.remove(p)
+    if test_fitz:
+        # Create copies of each test file, modified to use `pymupdf`
+        # instead of `fitz`.
+        for p in glob.glob(f'{pymupdf_dir_rel}/tests/test_*.py'):
+            if os.path.basename(p).startswith('test_fitz_'):
+                # Don't recursively generate test_fitz_fitz_foo.py,
+                # test_fitz_fitz_fitz_foo.py, ... etc.
+                continue
+            branch, leaf = os.path.split(p)
+            p2 = f'{branch}/{leaf[:5]}fitz_{leaf[5:]}'
+            print(f'Converting {p=} to {p2=}.')
+            with open(p, encoding='utf8') as f:
+                text = f.read()
+            text2 = re.sub("([^\'])\\bpymupdf\\b", '\\1fitz', text)
+            if p.replace(os.sep, '/') == f'{pymupdf_dir_rel}/tests/test_docs_samples.py'.replace(os.sep, '/'):
+                assert text2 == text
+            else:
+                assert text2 != text, f'Unexpectedly unchanged when creating {p!r} => {p2!r}'
+            with open(p2, 'w', encoding='utf8') as f:
+                f.write(text2)
+    try:
         log(f'Running tests with tests/run_compound.py and pytest.')
-        run(command, env_extra=env_extra, timeout=timeout)
+        run(command, env_extra=env_extra, timeout=test_timeout)
             
     except subprocess.TimeoutExpired as e:
          log(f'Timeout when running tests.')
