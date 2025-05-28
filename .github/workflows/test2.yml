@@ -1,11 +1,11 @@
-# Run scripts/test2.py directly on multiple Github servers.  Instead of
+# Run scripts/test.py directly on multiple Github servers.  Instead of
 # specifying individual inputs, we support a single string input which is used
 # for the command line directly.
 #
-# This ensures we behave exactly like scripts/test2.py, without confusion
-# caused by having to translate between differing APIs.
+# This ensures we behave exactly like scripts/test.py, without confusion caused
+# by having to translate between differing APIs.
 
-name: Test2
+name: Tests
 
 on:
   #schedule:
@@ -17,7 +17,7 @@ on:
       args:
         type: string
         default: ''
-        description: 'Arguments to pass to scripts/test2.py'
+        description: 'Arguments to pass to scripts/test.py'
 
 jobs:
 
@@ -50,9 +50,9 @@ jobs:
       
       - name: test
         env:
-          PYMUPDF_test2_args: ${{inputs.args}}
+          PYMUPDF_test_args: ${{inputs.args}}
         run:
-          python scripts/test2.py -a PYMUPDF_test2_args
+          python scripts/test.py -a PYMUPDF_test_args
       
       # Upload generated wheels, to be accessible from github Actions page.
       #
