@@ -143,7 +143,7 @@ Options:
         1 - Use venv. If it already exists, we assume the existing directory
             was created by us earlier and is a valid venv containing all
             necessary packages; this saves a little time.
-        2 - use venv
+        2 - Use venv
         The default is 2.
     --valgrind 0|1
         Use valgrind in `test` or `buildtest`.
@@ -394,8 +394,6 @@ def main(argv):
     #
     if sync_paths:
         # Just print required files, directories and checkouts.
-        if show_help:
-            return
         print(pymupdf_dir)
         if mupdf_sync:
             print(mupdf_sync)
@@ -417,6 +415,7 @@ def main(argv):
                 e = venv_run(
                         sys.argv,
                         f'venv-pymupdf-{platform.python_version()}-{int.bit_length(sys.maxsize+1)}',
+                        recreate=(venv==2),
                         )
                 sys.exit(e)
     else:
@@ -570,7 +569,7 @@ def build(
     
     if wheel:
         new_files = NewFiles(f'wheelhouse/*.whl')
-        run(f'pip wheel{build_isolation_text} -v {pymupdf_dir}', env_extra=env_extra)
+        run(f'pip wheel{build_isolation_text} -w wheelhouse -v {pymupdf_dir}', env_extra=env_extra)
         wheel = newer_files.get_one()
         run(f'pip install {wheel}')
     else:
@@ -615,12 +614,12 @@ def cibuildwheel(env_extra, cibw_name, cibw_pyodide):
     env_extra['CIBW_TEST_COMMAND'] = f'python {{project}}/scripts/test.py test'
 
     # Specify python versions.
-    CIBW_BUILD = os.environ.get('CIBW_BUILD')
+    CIBW_BUILD = env_extra.get('CIBW_BUILD')
     log(f'{CIBW_BUILD=}')
     if CIBW_BUILD is None:
         if os.environ.get('GITHUB_ACTIONS') == 'true':
             # Build/test all supported Python versions.
-            CIBW_BUILD = os.environ.get('CIBW_BUILD', 'cp39* cp310* cp311* cp312* cp313*')
+            CIBW_BUILD = 'cp39* cp310* cp311* cp312* cp313*'
         else:
             # Build/test current Python only.
             v = platform.python_version_tuple()[:2]
@@ -784,7 +783,8 @@ def pyodide_setup(
     return command
 
 
-def test(*,
+def test(
+        *,
         env_extra,
         implementations,
         venv=False,
