@@ -655,12 +655,12 @@ class Package:
             z.writestr(f'{dist_info_dir}/RECORD', record.get(f'{dist_info_dir}/RECORD'))
 
         st = os.stat(path)
-        log1( f'Have created wheel size={st.st_size}: {path}')
+        log1( f'Have created wheel size={st.st_size:,}: {path}')
         if g_verbose >= 2:
             with zipfile.ZipFile(path, compression=self.wheel_compression) as z:
                 log2(f'Contents are:')
                 for zi in sorted(z.infolist(), key=lambda z: z.filename):
-                    log2(f'    {zi.file_size: 10d} {zi.filename}')
+                    log2(f'    {zi.file_size: 10,d} {zi.filename}')
 
         return os.path.basename(path)
 
