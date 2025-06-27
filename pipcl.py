@@ -19,6 +19,7 @@ import hashlib
 import inspect
 import io
 import os
+import pathlib
 import platform
 import re
 import shlex
@@ -592,6 +593,20 @@ class Package:
                 f' metadata_directory={metadata_directory!r}'
                 )
 
+        if sys.implementation.name == 'graalpy':
+            cpythonname = os.environ.get('CPYTHON_EXE', 'python3.11')
+            cpython = shutil.which(cpythonname) or cpythonname
+            assert os.path.exists(cpython), f'Not available on PATH: {cpython=}'
+            root = os.path.abspath(f'{__file__}/..')
+            newfiles = NewFiles(f'{wheel_directory}/*.whl')
+            run(f'{shlex.quote(cpython)} setup.py --dist-dir {shlex.quote(wheel_directory)} bdist_wheel',
+                    env_extra=dict(
+                            PIPCL_GRAAL_EXT_SUFFIX=sysconfig.get_config_var('EXT_SUFFIX'),
+                            PIPCL_PYTHON_CONFIG='graalpy-config'),
+                            )
+            wheel = newfiles.get_one()
+            return os.path.basename(wheel)
+        
         wheel_name = self.wheel_name()
         path = f'{wheel_directory}/{wheel_name}'
 
@@ -758,12 +773,23 @@ class Package:
         '''
         return f'{self.tag_python()}-{self.tag_abi()}-{self.tag_platform()}'
 
+    def _graal_g_c(self):
+        PIPCL_GRAAL_EXT_SUFFIX = os.environ.get('PIPCL_GRAAL_EXT_SUFFIX')
+        m = re.match(r'\.graalpy(\d+[^\-]*)-(\d+)', PIPCL_GRAAL_EXT_SUFFIX)
+        assert m, f'Could not parse {PIPCL_GRAAL_EXT_SUFFIX=}'
+        gpver = m[1]
+        cpver = m[2]
+        return gpver, cpver
+    
     def tag_python(self):
         '''
-        Get two-digit python version, e.g. 'cp3.8' for python-3.8.6.
+        Get two-digit python version, e.g. 'cp38' for python-3.8.6.
         '''
         if self.tag_python_:
             return self.tag_python_
+        if os.environ.get('PIPCL_GRAAL_EXT_SUFFIX'):
+            gpver, cpver = self._graal_g_c()
+            return f'graalpy{cpver}'
         else:
             return 'cp' + ''.join(platform.python_version().split('.')[:2])
 
@@ -773,6 +799,9 @@ class Package:
         '''
         if self.tag_abi_:
             return self.tag_abi_
+        if os.environ.get('PIPCL_GRAAL_EXT_SUFFIX'):
+            gpver, cpver = self._graal_g_c()
+            return f'graalpy{gpver}_{cpver}_native'
         elif self.py_limited_api:
             return 'abi3'
         else:
