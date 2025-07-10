@@ -181,8 +181,11 @@ Command line args:
     --timeout <seconds>
         Sets timeout when running tests.
     
-    -T <command> | --pytest-prefix <command>
-        Use specified prefix when running pytest. E.g. `gdb --args`.
+    -T <prefix>
+        Use specified prefix when running pytest, must be one of:
+            gdb
+            helgrind
+            vagrind
     
     -v 0|1|2
         0 - do not use a venv.
@@ -192,10 +195,6 @@ Command line args:
         2 - Use venv
         The default is 2.
     
-    --valgrind 0|1
-        Use valgrind in `test` or `buildtest`.
-        This will run `sudo apt update` and `sudo apt install valgrind`.
-
 Commands:
     
     build
@@ -376,12 +375,6 @@ def main(argv):
         elif arg == '-f':
             test_fitz = int(next(args))
         
-        elif arg == '--gdb':
-            _gdb = int(next(args))
-            if _gdb == 1:
-                pytest_prefix = 'gdb'
-            warnings += f'{arg=} is deprecated, use `-T gdb`.'
-        
         elif arg in ('-h', '--help'):
             show_help = True
         
@@ -439,18 +432,14 @@ def main(argv):
         elif arg == '--timeout':
             test_timeout = float(next(args))
         
-        elif arg in ('-T', '--pytest-prefix'):
+        elif arg == '-T':
             pytest_prefix = next(args)
+            assert pytest_prefix in ('gdb', 'helgrind', 'valgrind'), \
+                    f'Unrecognised {pytest_prefix=}, should be one of: gdb valgrind helgrind.'
         
         elif arg == '-v':
             venv = int(next(args))
             assert venv in (0, 1, 2), f'Invalid {venv=} should be 0, 1 or 2.'
-        
-        elif arg == '--valgrind':
-            _valgrind = int(next(args))
-            if _valgrind == 1:
-                pytest_prefix = 'valgrind'
-            warnings += f'{arg=} is deprecated, use `-T _valgrind`.'
         
         elif arg in ('build', 'cibw', 'pyodide', 'test', 'wheel'):
             commands.append(arg)
