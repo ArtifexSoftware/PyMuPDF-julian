@@ -357,7 +357,7 @@ def main():
     #
     log('## Run PyMuPDF pytest tests.')
     def run(command, env_extra=None):
-        return run_command(command, doit=pytest_do, env_extra=env_extra)
+        return run_command(command, doit=pytest_do, env_extra=env_extra, caller=1)
     import gh_release
     if pip == 'venv':
         # Create venv.
@@ -368,7 +368,11 @@ def main():
         command += f' && pip install --upgrade {gh_release.test_packages}'
         run(command)
     elif pip == 'sudo':
-        run(f'sudo pip install --upgrade {gh_release.test_packages}')
+        names = gh_release.test_packages
+        names = names.split(' ')
+        names = [n for n in names if n not in ('psutil', 'pillow')]
+        names = ' '.join(names)
+        run(f'sudo pip install --upgrade {names}')
     else:
         log(f'Not installing packages for testing because {pip=}.')
     # Run pytest.
@@ -415,9 +419,9 @@ def main():
     run(command, env_extra=dict(PYMUPDF_SYSINSTALL_TEST='1'))
 
 
-def run_command(command, capture=False, check=True, doit=True, env_extra=None):
+def run_command(command, capture=False, check=True, doit=True, env_extra=None, caller=0):
     if doit:
-        return pipcl.run(command, capture=capture, check=check, caller=2, env_extra=env_extra)
+        return pipcl.run(command, capture=capture, check=check, caller=caller+2, env_extra=env_extra)
     else:
         log(f'## Would have run: {command}', caller=2)
 
