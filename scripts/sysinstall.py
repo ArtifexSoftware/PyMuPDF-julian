@@ -235,8 +235,20 @@ def main():
     if pip == 'sudo':
         log('## Installing Python packages required for building MuPDF and PyMuPDF.')
         #run(f'sudo pip install --upgrade pip') # Breaks on Github see: https://github.com/pypa/get-pip/issues/226.
+        # We need to install psutil and pillow as system packages, otherwise things like `import psutil`
+        # fail, seemingly because of pip warning:
+        #
+        #   WARNING: Running pip as the 'root' user can result in broken
+        #   permissions and conflicting behaviour with the system package
+        #   manager. It is recommended to use a virtual environment instead:
+        #   https://pip.pypa.io/warnings/venv
+        #
         names = test_py.wrap_get_requires_for_build_wheel(f'{__file__}/../..')
+        names = names.split(' ')
+        names = [n for n in names if n not in ('psutil', 'pillow')]
+        names = ' '.join(names)
         run(f'sudo pip install {names}')
+        run(f'sudo apt install python3-psutil python3-pillow')
     
     log('## Build and install MuPDF.')
     command = f'cd {mupdf_dir}'
