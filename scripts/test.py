@@ -463,7 +463,7 @@ def main(argv):
                 _mupdf = None
             elif _mupdf.startswith(':'):
                 _branch = _mupdf[1:]
-                _mupdf = 'git:--branch {_branch} https://github.com/ArtifexSoftware/mupdf.git'
+                _mupdf = f'git:--branch {_branch} https://github.com/ArtifexSoftware/mupdf.git'
                 os.environ['PYMUPDF_SETUP_MUPDF_BUILD'] = _mupdf
             elif _mupdf.startswith('git:') or '://' in _mupdf:
                 os.environ['PYMUPDF_SETUP_MUPDF_BUILD'] = _mupdf
