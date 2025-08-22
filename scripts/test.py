@@ -348,7 +348,7 @@ def main(argv):
     install_version = None
     mupdf_sync = None
     os_names = list()
-    system_packages = False
+    system_packages = True
     pybind = False
     pyodide_build_version = None
     pytest_options = ''
