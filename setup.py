@@ -233,11 +233,7 @@ python_version_tuple = tuple(int(x) for x in platform.python_version_tuple()[:2]
 PYMUPDF_SETUP_PY_LIMITED_API = os.environ.get('PYMUPDF_SETUP_PY_LIMITED_API')
 assert PYMUPDF_SETUP_PY_LIMITED_API in (None, '', '0', '1'), \
         f'Should be "", "0", "1" or undefined: {PYMUPDF_SETUP_PY_LIMITED_API=}.'
-if PYMUPDF_SETUP_PY_LIMITED_API is None and python_version_tuple >= (3, 13):
-    log(f'Not defaulting to Python limited api because {platform.python_version_tuple()=}.')
-    g_py_limited_api = False
-else:
-    g_py_limited_api = (PYMUPDF_SETUP_PY_LIMITED_API != '0')
+g_py_limited_api = (PYMUPDF_SETUP_PY_LIMITED_API != '0')
 
 PYMUPDF_SETUP_URL_WHEEL =  os.environ.get('PYMUPDF_SETUP_URL_WHEEL')
 log(f'{PYMUPDF_SETUP_URL_WHEEL=}')
