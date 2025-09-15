@@ -733,10 +733,12 @@ def build():
         except Exception:
             return 0
     swig_version_tuple = tuple(int_or_0(i) for i in swig_version.split('.'))
+    version_p_tuple = tuple(int_or_0(i) for i in version_p.split('.'))
     log(f'{swig_version=}')
     text = ''
     text += f'mupdf_location = {mupdf_location!r}\n'
     text += f'pymupdf_version = {version_p!r}\n'
+    text += f'pymupdf_version_tuple = {version_p_tuple!r}\n'
     text += f'pymupdf_git_sha = {sha!r}\n'
     text += f'pymupdf_git_diff = {diff!r}\n'
     text += f'pymupdf_git_branch = {branch!r}\n'
@@ -1261,7 +1263,7 @@ classifier = [
 #
 
 # PyMuPDF version.
-version_p = '1.26.5'
+version_p = '1.26.6'
 
 version_mupdf = '1.26.7'
 
