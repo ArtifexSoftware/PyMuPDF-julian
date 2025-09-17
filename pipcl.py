@@ -642,11 +642,6 @@ class Package:
             wheel_leaf = os.path.basename(wheel)
             python_major_minor = run(f'{shlex.quote(python_native)} -c "import platform; import sys; sys.stdout.write(str().join(platform.python_version_tuple()[:2]))"', capture=1)
             cpabi_regex = f'cp{python_major_minor}-((abi3)|(none))'
-            #if self.py_limited_api:
-            #    cpabi = f'cp{python_major_minor}-abi3'
-            #else:
-            #    cpabi = f'cp{python_major_minor}-none'
-            #assert cpabi in wheel_leaf, f'Expected wheel to be for {cpabi=}, but {wheel=}.'
             graalpy_ext_suffix = sysconfig.get_config_var('EXT_SUFFIX')
             log1(f'{graalpy_ext_suffix=}')
             m = re.match(r'\.graalpy(\d+[^\-]*)-(\d+)', graalpy_ext_suffix)
