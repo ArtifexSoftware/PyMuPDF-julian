@@ -483,9 +483,9 @@ class Package:
                 `myvenv/lib/python3.9/site-packages/`.
 
                 When calling this function, we assert that the file
-                pyproject.toml exists in the current directory. We do this here
-                rather than when pipcl.Package, as otherwise importing setup.py
-                from non-package-related code could fail.
+                pyproject.toml exists in the current directory. (We do this
+                here rather than in pipcl.Package's constructor, as otherwise
+                importing setup.py from non-package-related code could fail.)
 
             fn_clean:
                 A function taking a single arg `all_` that cleans generated
